@@ -15,6 +15,7 @@ MonoBehaviour:
   cuidId: tide_toad
   displayName: Tide Toad
   level: 1
+  portrait: {fileID: 21300000, guid: 8ffb4a05e57b91a49b52d4b6f767d46c, type: 3}
   primaryType: 6
   secondaryType: 0
   traitId: calming_pulse

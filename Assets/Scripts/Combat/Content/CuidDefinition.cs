@@ -13,6 +13,7 @@ namespace MidnightFamiliar.Combat.Content
         [SerializeField] private string cuidId = "cuid_species";
         [SerializeField] private string displayName = "Cuid";
         [SerializeField] private int level = 1;
+        [SerializeField] private Sprite portrait;
 
         [Header("Typing")]
         [SerializeField] private CuidType primaryType = CuidType.None;
@@ -41,6 +42,7 @@ namespace MidnightFamiliar.Combat.Content
         public string CuidId => cuidId;
         public string DisplayName => displayName;
         public int Level => level;
+        public Sprite Portrait => portrait;
         public CuidType PrimaryType => primaryType;
         public CuidType SecondaryType => secondaryType;
         public string TraitId => traitId;

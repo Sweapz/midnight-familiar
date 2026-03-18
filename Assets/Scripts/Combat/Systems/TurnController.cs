@@ -110,6 +110,11 @@ namespace MidnightFamiliar.Combat.Systems
 
         public TurnStepResult ExecuteTurn(TurnChoice choice)
         {
+            return ExecuteTurn(choice, advanceTurn: true);
+        }
+
+        public TurnStepResult ExecuteTurn(TurnChoice choice, bool advanceTurn)
+        {
             if (Phase != BattlePhase.InProgress || BattleState == null)
             {
                 return BuildStepFailure("Battle is not in progress.");
@@ -123,7 +128,10 @@ namespace MidnightFamiliar.Combat.Systems
 
             if (choice == null || choice.IsPass)
             {
-                AdvanceTurn();
+                if (advanceTurn)
+                {
+                    AdvanceTurn();
+                }
                 return BuildStepSuccess("Turn passed.", null);
             }
 
@@ -148,7 +156,10 @@ namespace MidnightFamiliar.Combat.Systems
                 return BuildStepSuccess(resolution.Summary, resolution);
             }
 
-            AdvanceTurn();
+            if (advanceTurn)
+            {
+                AdvanceTurn();
+            }
             return BuildStepSuccess(resolution.Summary, resolution);
         }
 

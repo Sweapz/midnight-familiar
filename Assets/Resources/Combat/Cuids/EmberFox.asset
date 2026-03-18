@@ -15,6 +15,7 @@ MonoBehaviour:
   cuidId: ember_fox
   displayName: Ember Fox
   level: 1
+  portrait: {fileID: 21300000, guid: bb94b7f371bc07d4cbb0c17d266f1fef, type: 3}
   primaryType: 3
   secondaryType: 0
   traitId: flare_instinct
