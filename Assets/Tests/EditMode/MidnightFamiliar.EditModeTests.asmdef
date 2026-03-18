@@ -1,0 +1,23 @@
+{
+  "name": "MidnightFamiliar.EditModeTests",
+  "rootNamespace": "MidnightFamiliar.Tests",
+  "references": [
+    "GUID:6b0197e4aa7ddf740a220f67e0228306"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

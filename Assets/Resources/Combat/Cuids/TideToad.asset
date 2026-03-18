@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c50776ab5d4c5334996f0e0ddd6e7c52, type: 3}
+  m_Name: TideToad
+  m_EditorClassIdentifier: 
+  cuidId: tide_toad
+  displayName: Tide Toad
+  level: 1
+  primaryType: 6
+  secondaryType: 0
+  traitId: calming_pulse
+  traitName: Calming Pulse
+  traitDescription: Supportive abilities gain improved effect.
+  attack: 9
+  defense: 11
+  abilityEffectiveness: 13
+  abilityResistance: 11
+  speed: 8
+  constitution: 44
+  damage: 1
+  damageReduction: 2
+  abilityDamage: 3
+  abilityReduction: 1
+  actions:
+  - {fileID: 11400000, guid: b1a3f8d1e7d24f299ee5d58ca1f7a003, type: 2}
+  - {fileID: 11400000, guid: b1a3f8d1e7d24f299ee5d58ca1f7a004, type: 2}
