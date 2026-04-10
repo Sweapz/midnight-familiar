@@ -21,6 +21,11 @@ Prioritize clarity and maintainability over cleverness.
 - Prefer extending existing scripts before introducing new architecture.
 - If a risky change is needed, propose it first and explain tradeoffs.
 
+## Structure Guidance
+- Avoid monolithic scripts: when a class starts accumulating multiple responsibilities, split it into focused files.
+- For large Unity controllers, prefer partial-class file splits by concern (for example `*.Input.cs`, `*.UI.cs`, `*.Opportunity.cs`) before adding new systems.
+- Keep one clear responsibility per file whenever practical, even if the runtime type remains the same.
+
 ## Code Style (C# / Unity)
 - Use PascalCase for classes, methods, and public members.
 - Use camelCase for local variables and private fields.
