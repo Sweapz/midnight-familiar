@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace MidnightFamiliar.Combat.Models
 {
@@ -16,6 +17,8 @@ namespace MidnightFamiliar.Combat.Models
         public int HitBonus = 0;
         public int Potency = 5;
         public int CooldownTurns = 0;
+        public bool IsBasicAttack = false;
+        public List<SupportEffect> SupportEffects = new List<SupportEffect>(2);
 
         public bool IsAbility => Kind == ActionKind.Ability;
         public bool IsAttack => Kind == ActionKind.Attack;
@@ -40,8 +43,32 @@ namespace MidnightFamiliar.Combat.Models
                 Range = Range,
                 HitBonus = HitBonus,
                 Potency = Potency,
-                CooldownTurns = CooldownTurns
+                CooldownTurns = CooldownTurns,
+                IsBasicAttack = IsBasicAttack,
+                SupportEffects = CloneSupportEffects()
             };
+        }
+
+        private List<SupportEffect> CloneSupportEffects()
+        {
+            var copy = new List<SupportEffect>(SupportEffects != null ? SupportEffects.Count : 0);
+            if (SupportEffects == null)
+            {
+                return copy;
+            }
+
+            for (int i = 0; i < SupportEffects.Count; i++)
+            {
+                SupportEffect effect = SupportEffects[i];
+                if (effect == null)
+                {
+                    continue;
+                }
+
+                copy.Add(effect.Clone());
+            }
+
+            return copy;
         }
     }
 }

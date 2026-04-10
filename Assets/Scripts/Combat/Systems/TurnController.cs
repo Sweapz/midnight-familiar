@@ -305,6 +305,10 @@ namespace MidnightFamiliar.Combat.Systems
                 return;
             }
 
+            string endingCombatantId = BattleState.TurnOrder[BattleState.CurrentTurnIndex];
+            CombatantState endingCombatant = BattleState.FindCombatant(endingCombatantId);
+            endingCombatant?.TickActiveEffectsAtTurnEnd();
+
             BattleState.CurrentTurnIndex++;
             if (BattleState.CurrentTurnIndex >= BattleState.TurnOrder.Count)
             {

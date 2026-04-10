@@ -18,7 +18,7 @@ namespace MidnightFamiliar.Combat.Presentation.UI
 
         [Header("Buttons")]
         [SerializeField] private Button endTurnButton;
-        [SerializeField] private List<Button> actionButtons = new List<Button>(4);
+        [SerializeField] private List<Button> actionButtons = new List<Button>(5);
 
         public event Action<int> ActionPressed;
         public event Action EndTurnPressed;
@@ -135,12 +135,14 @@ namespace MidnightFamiliar.Combat.Presentation.UI
                 endTurnButton = t != null ? t.GetComponent<Button>() : null;
             }
 
-            if (actionButtons.Count == 0)
+            if (actionButtons == null || actionButtons.Count < 5)
             {
                 Transform row = transform.Find("ActionRow");
                 if (row != null)
                 {
-                    actionButtons = row.GetComponentsInChildren<Button>(true).ToList();
+                    actionButtons = row.GetComponentsInChildren<Button>(true)
+                        .OrderBy(button => button.transform.GetSiblingIndex())
+                        .ToList();
                 }
             }
         }

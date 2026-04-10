@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using MidnightFamiliar.Combat.Models;
 using UnityEngine;
 
@@ -22,6 +23,7 @@ namespace MidnightFamiliar.Combat.Content
         [SerializeField] private int hitBonus = 0;
         [SerializeField] private int potency = 5;
         [SerializeField] private int cooldownTurns = 0;
+        [SerializeField] private List<SupportEffect> supportEffects = new List<SupportEffect>(2);
 
         public string ActionId => actionId;
         public string DisplayName => displayName;
@@ -34,6 +36,7 @@ namespace MidnightFamiliar.Combat.Content
         public int HitBonus => hitBonus;
         public int Potency => potency;
         public int CooldownTurns => cooldownTurns;
+        public IReadOnlyList<SupportEffect> SupportEffects => supportEffects;
 
         public void ConfigureForRuntime(
             string newActionId,
@@ -46,7 +49,8 @@ namespace MidnightFamiliar.Combat.Content
             int newRange,
             int newHitBonus,
             int newPotency,
-            int newCooldownTurns)
+            int newCooldownTurns,
+            List<SupportEffect> newSupportEffects = null)
         {
             actionId = newActionId;
             displayName = newDisplayName;
@@ -59,6 +63,7 @@ namespace MidnightFamiliar.Combat.Content
             hitBonus = newHitBonus;
             potency = newPotency;
             cooldownTurns = newCooldownTurns;
+            supportEffects = newSupportEffects ?? new List<SupportEffect>(2);
         }
     }
 }

@@ -54,11 +54,24 @@ namespace MidnightFamiliar.Combat.Presentation.Editor
             Text roundLabel = EnsureRoundLabel(hudRootRect);
             RectTransform container = EnsureTurnOrderContainer(hudRootRect);
             BattleTurnOrderEntryView template = EnsureItemTemplate(container);
+            RectTransform hoverTooltipRoot = EnsureHudHoverTooltip(canvas.transform);
+            Text hoverNameLabel = FindChildText(hoverTooltipRoot, "NameText");
+            Text hoverStatsLabel = FindChildText(hoverTooltipRoot, "StatsText");
+            Text hoverEffectsLabel = FindChildText(hoverTooltipRoot, "EffectsText");
             BattleActionPanelController actionPanel = EnsureActionPanel(canvas.transform);
             BattleCombatLogPanelController combatLogPanel = EnsureCombatLogPanel(canvas.transform);
+            BattleOpportunityPanelController opportunityPanel = EnsureOpportunityPanel(canvas.transform);
 
-            WireHudController(hudController, roundLabel, container, template);
-            WireBattleController(hudController, actionPanel, combatLogPanel);
+            WireHudController(
+                hudController,
+                roundLabel,
+                container,
+                template,
+                hoverTooltipRoot,
+                hoverNameLabel,
+                hoverStatsLabel,
+                hoverEffectsLabel);
+            WireBattleController(hudController, actionPanel, combatLogPanel, opportunityPanel);
 
             Selection.activeGameObject = hudRoot.gameObject;
             EditorGUIUtility.PingObject(hudRoot.gameObject);
@@ -287,12 +300,20 @@ namespace MidnightFamiliar.Combat.Presentation.Editor
             BattleHudController hudController,
             Text roundLabel,
             RectTransform turnOrderContainer,
-            BattleTurnOrderEntryView template)
+            BattleTurnOrderEntryView template,
+            RectTransform hoverTooltipRoot,
+            Text hoverNameLabel,
+            Text hoverStatsLabel,
+            Text hoverEffectsLabel)
         {
             SerializedObject so = new SerializedObject(hudController);
             so.FindProperty("turnOrderContainer").objectReferenceValue = turnOrderContainer;
             so.FindProperty("turnOrderItemPrefab").objectReferenceValue = template;
             so.FindProperty("roundLabel").objectReferenceValue = roundLabel;
+            so.FindProperty("hoverTooltipRoot").objectReferenceValue = hoverTooltipRoot;
+            so.FindProperty("hoverNameLabel").objectReferenceValue = hoverNameLabel;
+            so.FindProperty("hoverStatsLabel").objectReferenceValue = hoverStatsLabel;
+            so.FindProperty("hoverEffectsLabel").objectReferenceValue = hoverEffectsLabel;
             so.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(hudController);
         }
@@ -339,13 +360,13 @@ namespace MidnightFamiliar.Combat.Presentation.Editor
             Text stats = EnsureChildText(statusBox, "StatsText", new Vector2(83.4f, -31.9f), new Vector2(230f, 64f), 16, TextAnchor.UpperLeft);
 
             RectTransform actionRow = EnsureActionRow(panelRect);
-            var buttons = new List<Button>(4);
+            var buttons = new List<Button>(5);
             float x = 0f;
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < 5; i++)
             {
-                Button button = EnsureButton(actionRow, $"ActionButton{i + 1}", $"Action {i + 1}", new Vector2(x, 0f), new Vector2(122f, 72f));
+                Button button = EnsureButton(actionRow, $"ActionButton{i + 1}", $"Action {i + 1}", new Vector2(x, 0f), new Vector2(96f, 72f));
                 buttons.Add(button);
-                x += 128f;
+                x += 102f;
             }
 
             BattleActionPanelController controller = panelRect.GetComponent<BattleActionPanelController>();
@@ -393,15 +414,22 @@ namespace MidnightFamiliar.Combat.Presentation.Editor
             panelRect.anchorMax = new Vector2(1f, 0f);
             panelRect.pivot = new Vector2(1f, 0f);
             panelRect.anchoredPosition = new Vector2(-16f, 16f);
-            panelRect.sizeDelta = new Vector2(360f, 280f);
+            panelRect.sizeDelta = new Vector2(520f, 280f);
 
-            RectTransform content = EnsurePanel(panelRect, "Content", new Vector2(0f, 0f), new Vector2(360f, 236f));
-            Text title = EnsureChildText(content, "Title", new Vector2(10f, -8f), new Vector2(260f, 20f), 14, TextAnchor.UpperLeft);
+            RectTransform content = EnsurePanel(panelRect, "Content", new Vector2(0f, 0f), new Vector2(520f, 236f));
+            Text title = EnsureChildText(content, "Title", new Vector2(10f, -8f), new Vector2(320f, 32f), 25, TextAnchor.UpperLeft);
             title.text = "Combat Log";
+            Image divider = EnsureChildImage(content, "TitleDivider", new Vector2(5f, -38f), new Vector2(510f, 2f));
+            divider.color = new Color(1f, 1f, 1f, 0.35f);
+            ScrollRect logScrollRect = EnsureCombatLogScrollView(content);
             Text logText = EnsureChildText(content, "LogText", new Vector2(10f, -30f), new Vector2(340f, 196f), 13, TextAnchor.UpperLeft);
             logText.text = "No log entries yet.";
+            logText.gameObject.SetActive(false);
+            RectTransform entriesContainer = EnsureLogEntriesContainer(logScrollRect.viewport);
+            logScrollRect.content = entriesContainer;
+            Text logEntryTemplate = EnsureLogEntryTemplate(entriesContainer);
 
-            Button toggleButton = EnsureButton(panelRect, "ToggleLogButton", "Hide Log", new Vector2(248f, 242f), new Vector2(112f, 32f));
+            Button toggleButton = EnsureButton(panelRect, "ToggleLogButton", "Hide Log", new Vector2(408f, 242f), new Vector2(112f, 32f));
 
             BattleCombatLogPanelController controller = panelRect.GetComponent<BattleCombatLogPanelController>();
             SerializedObject so = new SerializedObject(controller);
@@ -410,10 +438,304 @@ namespace MidnightFamiliar.Combat.Presentation.Editor
             so.FindProperty("toggleButton").objectReferenceValue = toggleButton;
             so.FindProperty("toggleButtonLabel").objectReferenceValue = toggleButton.GetComponentInChildren<Text>(true);
             so.FindProperty("logText").objectReferenceValue = logText;
+            so.FindProperty("logScrollRect").objectReferenceValue = logScrollRect;
+            so.FindProperty("logEntriesContainer").objectReferenceValue = entriesContainer;
+            so.FindProperty("logEntryTemplate").objectReferenceValue = logEntryTemplate;
             so.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(controller);
 
             return controller;
+        }
+
+        private static BattleOpportunityPanelController EnsureOpportunityPanel(Transform canvasRoot)
+        {
+            Transform existing = canvasRoot.Find("BattleOpportunityPanel");
+            RectTransform panelRect;
+            if (existing == null)
+            {
+                panelRect = new GameObject("BattleOpportunityPanel", typeof(RectTransform), typeof(Image), typeof(BattleOpportunityPanelController))
+                    .GetComponent<RectTransform>();
+                panelRect.SetParent(canvasRoot, false);
+            }
+            else
+            {
+                panelRect = existing as RectTransform ?? ReplaceWithRectTransform(existing, canvasRoot);
+                if (panelRect.GetComponent<Image>() == null)
+                {
+                    panelRect.gameObject.AddComponent<Image>();
+                }
+
+                if (panelRect.GetComponent<BattleOpportunityPanelController>() == null)
+                {
+                    panelRect.gameObject.AddComponent<BattleOpportunityPanelController>();
+                }
+            }
+
+            RemoveMissingScriptsRecursive(panelRect.gameObject);
+            panelRect.anchorMin = new Vector2(0.5f, 0.5f);
+            panelRect.anchorMax = new Vector2(0.5f, 0.5f);
+            panelRect.pivot = new Vector2(0.5f, 0.5f);
+            panelRect.anchoredPosition = new Vector2(0f, -120f);
+            panelRect.sizeDelta = new Vector2(700f, 190f);
+
+            Image background = panelRect.GetComponent<Image>();
+            background.color = new Color(0f, 0f, 0f, 0.84f);
+
+            Text promptLabel = EnsureChildText(panelRect, "PromptLabel", new Vector2(16f, -14f), new Vector2(668f, 34f), 21, TextAnchor.MiddleLeft);
+            RectTransform actionsRow = EnsureOpportunityActionsRow(panelRect);
+            Button template = EnsureButton(actionsRow, "OpportunityActionTemplate", "Basic Strike", new Vector2(0f, 0f), new Vector2(208f, 62f));
+            Button decline = EnsureButton(panelRect, "DeclineButton", "Skip", new Vector2(552f, 14f), new Vector2(132f, 46f));
+            template.gameObject.SetActive(false);
+
+            BattleOpportunityPanelController controller = panelRect.GetComponent<BattleOpportunityPanelController>();
+            SerializedObject so = new SerializedObject(controller);
+            so.FindProperty("panelRoot").objectReferenceValue = panelRect;
+            so.FindProperty("promptLabel").objectReferenceValue = promptLabel;
+            so.FindProperty("actionsContainer").objectReferenceValue = actionsRow;
+            so.FindProperty("actionButtonTemplate").objectReferenceValue = template;
+            so.FindProperty("declineButton").objectReferenceValue = decline;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(controller);
+            panelRect.gameObject.SetActive(false);
+            return controller;
+        }
+
+        private static RectTransform EnsureLogEntriesContainer(RectTransform contentRoot)
+        {
+            Transform existing = contentRoot.Find("LogEntriesContainer");
+            RectTransform container;
+            if (existing == null)
+            {
+                container = new GameObject(
+                    "LogEntriesContainer",
+                    typeof(RectTransform),
+                    typeof(VerticalLayoutGroup),
+                    typeof(ContentSizeFitter)).GetComponent<RectTransform>();
+                container.SetParent(contentRoot, false);
+            }
+            else
+            {
+                container = existing as RectTransform ?? ReplaceWithRectTransform(existing, contentRoot);
+                if (container.GetComponent<VerticalLayoutGroup>() == null)
+                {
+                    container.gameObject.AddComponent<VerticalLayoutGroup>();
+                }
+
+                if (container.GetComponent<ContentSizeFitter>() == null)
+                {
+                    container.gameObject.AddComponent<ContentSizeFitter>();
+                }
+            }
+
+            container.anchorMin = new Vector2(0f, 1f);
+            container.anchorMax = new Vector2(1f, 1f);
+            container.pivot = new Vector2(0.5f, 1f);
+            container.anchoredPosition = Vector2.zero;
+            container.sizeDelta = Vector2.zero;
+
+            VerticalLayoutGroup layout = container.GetComponent<VerticalLayoutGroup>();
+            layout.childAlignment = TextAnchor.UpperLeft;
+            layout.childControlWidth = true;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = true;
+            layout.childForceExpandHeight = false;
+            layout.spacing = 4f;
+            layout.padding = new RectOffset(10, 10, 0, 10);
+
+            ContentSizeFitter fitter = container.GetComponent<ContentSizeFitter>();
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            fitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;
+
+            return container;
+        }
+
+        private static ScrollRect EnsureCombatLogScrollView(RectTransform contentRoot)
+        {
+            Transform existing = contentRoot.Find("LogScrollView");
+            RectTransform scrollRectTransform;
+            ScrollRect scrollRect;
+            if (existing == null)
+            {
+                scrollRectTransform = new GameObject(
+                    "LogScrollView",
+                    typeof(RectTransform),
+                    typeof(Image),
+                    typeof(ScrollRect)).GetComponent<RectTransform>();
+                scrollRectTransform.SetParent(contentRoot, false);
+                scrollRect = scrollRectTransform.GetComponent<ScrollRect>();
+            }
+            else
+            {
+                scrollRectTransform = existing as RectTransform ?? ReplaceWithRectTransform(existing, contentRoot);
+                if (scrollRectTransform.GetComponent<Image>() == null)
+                {
+                    scrollRectTransform.gameObject.AddComponent<Image>();
+                }
+
+                scrollRect = scrollRectTransform.GetComponent<ScrollRect>() ?? scrollRectTransform.gameObject.AddComponent<ScrollRect>();
+            }
+
+            scrollRectTransform.anchorMin = new Vector2(0f, 0f);
+            scrollRectTransform.anchorMax = new Vector2(1f, 1f);
+            scrollRectTransform.pivot = new Vector2(0.5f, 0.5f);
+            scrollRectTransform.offsetMin = new Vector2(0f, 0f);
+            scrollRectTransform.offsetMax = new Vector2(0f, -43f);
+
+            Image scrollImage = scrollRectTransform.GetComponent<Image>();
+            scrollImage.color = new Color(0f, 0f, 0f, 0f);
+
+            RectTransform viewport = EnsureScrollViewport(scrollRectTransform);
+            RectTransform content = EnsureScrollContent(viewport);
+            scrollRect.viewport = viewport;
+            scrollRect.content = content;
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+            scrollRect.movementType = ScrollRect.MovementType.Clamped;
+            scrollRect.scrollSensitivity = 24f;
+
+            return scrollRect;
+        }
+
+        private static RectTransform EnsureScrollViewport(RectTransform scrollView)
+        {
+            Transform existing = scrollView.Find("Viewport");
+            RectTransform viewport;
+            if (existing == null)
+            {
+                viewport = new GameObject("Viewport", typeof(RectTransform), typeof(Image), typeof(RectMask2D)).GetComponent<RectTransform>();
+                viewport.SetParent(scrollView, false);
+            }
+            else
+            {
+                viewport = existing as RectTransform ?? ReplaceWithRectTransform(existing, scrollView);
+                if (viewport.GetComponent<Image>() == null)
+                {
+                    viewport.gameObject.AddComponent<Image>();
+                }
+                if (viewport.GetComponent<RectMask2D>() == null)
+                {
+                    viewport.gameObject.AddComponent<RectMask2D>();
+                }
+            }
+
+            viewport.anchorMin = new Vector2(0f, 0f);
+            viewport.anchorMax = new Vector2(1f, 1f);
+            viewport.pivot = new Vector2(0.5f, 0.5f);
+            viewport.offsetMin = Vector2.zero;
+            viewport.offsetMax = Vector2.zero;
+            viewport.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0f);
+            return viewport;
+        }
+
+        private static RectTransform EnsureScrollContent(RectTransform viewport)
+        {
+            Transform existing = viewport.Find("Content");
+            RectTransform content;
+            if (existing == null)
+            {
+                content = new GameObject("Content", typeof(RectTransform)).GetComponent<RectTransform>();
+                content.SetParent(viewport, false);
+            }
+            else
+            {
+                content = existing as RectTransform ?? ReplaceWithRectTransform(existing, viewport);
+            }
+
+            content.anchorMin = new Vector2(0f, 1f);
+            content.anchorMax = new Vector2(1f, 1f);
+            content.pivot = new Vector2(0.5f, 1f);
+            content.anchoredPosition = Vector2.zero;
+            content.sizeDelta = new Vector2(0f, 0f);
+            return content;
+        }
+
+        private static Text EnsureLogEntryTemplate(RectTransform container)
+        {
+            Transform existing = container.Find("LogEntryTemplate");
+            Text templateText;
+            if (existing == null)
+            {
+                templateText = new GameObject(
+                    "LogEntryTemplate",
+                    typeof(RectTransform),
+                    typeof(Text),
+                    typeof(LayoutElement)).GetComponent<Text>();
+                templateText.transform.SetParent(container, false);
+            }
+            else
+            {
+                templateText = existing.GetComponent<Text>() ?? existing.gameObject.AddComponent<Text>();
+                if (templateText.GetComponent<LayoutElement>() == null)
+                {
+                    templateText.gameObject.AddComponent<LayoutElement>();
+                }
+            }
+
+            RectTransform rect = templateText.rectTransform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+
+            templateText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            templateText.fontSize = 19;
+            templateText.color = Color.white;
+            templateText.alignment = TextAnchor.UpperLeft;
+            templateText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            templateText.verticalOverflow = VerticalWrapMode.Overflow;
+            templateText.supportRichText = true;
+            templateText.text = "Log Entry Template";
+
+            LayoutElement layoutElement = templateText.GetComponent<LayoutElement>();
+            layoutElement.preferredHeight = 28f;
+
+            templateText.gameObject.SetActive(false);
+            return templateText;
+        }
+
+        private static RectTransform EnsureHudHoverTooltip(Transform canvasRoot)
+        {
+            Transform existing = canvasRoot.Find("HoverTooltip");
+            RectTransform root;
+            if (existing == null)
+            {
+                root = new GameObject("HoverTooltip", typeof(RectTransform), typeof(Image)).GetComponent<RectTransform>();
+                root.SetParent(canvasRoot, false);
+            }
+            else
+            {
+                root = existing as RectTransform ?? ReplaceWithRectTransform(existing, canvasRoot);
+                if (root.GetComponent<Image>() == null)
+                {
+                    root.gameObject.AddComponent<Image>();
+                }
+            }
+
+            root.anchorMin = new Vector2(0.5f, 0.5f);
+            root.anchorMax = new Vector2(0.5f, 0.5f);
+            root.pivot = new Vector2(0.5f, 0.5f);
+            root.sizeDelta = new Vector2(320f, 220f);
+
+            Image background = root.GetComponent<Image>();
+            background.color = new Color(0f, 0f, 0f, 0.82f);
+
+            EnsureChildText(root, "NameText", new Vector2(10f, -8f), new Vector2(300f, 26f), 17, TextAnchor.UpperLeft);
+            EnsureChildText(root, "StatsText", new Vector2(10f, -36f), new Vector2(300f, 108f), 14, TextAnchor.UpperLeft);
+            EnsureChildText(root, "EffectsText", new Vector2(10f, -146f), new Vector2(300f, 68f), 14, TextAnchor.UpperLeft);
+            root.gameObject.SetActive(false);
+            return root;
+        }
+
+        private static Text FindChildText(RectTransform parent, string childName)
+        {
+            if (parent == null)
+            {
+                return null;
+            }
+
+            Transform child = parent.Find(childName);
+            return child != null ? child.GetComponent<Text>() : null;
         }
 
         private static RectTransform EnsurePanel(Transform parent, string name, Vector2 anchoredPos, Vector2 size)
@@ -465,6 +787,41 @@ namespace MidnightFamiliar.Combat.Presentation.Editor
             return row;
         }
 
+        private static RectTransform EnsureOpportunityActionsRow(RectTransform panelRect)
+        {
+            Transform existing = panelRect.Find("ActionsRow");
+            RectTransform row;
+            if (existing == null)
+            {
+                row = new GameObject("ActionsRow", typeof(RectTransform), typeof(HorizontalLayoutGroup)).GetComponent<RectTransform>();
+                row.SetParent(panelRect, false);
+            }
+            else
+            {
+                row = existing as RectTransform ?? ReplaceWithRectTransform(existing, panelRect);
+                if (row.GetComponent<HorizontalLayoutGroup>() == null)
+                {
+                    row.gameObject.AddComponent<HorizontalLayoutGroup>();
+                }
+            }
+
+            row.anchorMin = new Vector2(0f, 0f);
+            row.anchorMax = new Vector2(1f, 0f);
+            row.pivot = new Vector2(0.5f, 0f);
+            row.anchoredPosition = new Vector2(0f, 66f);
+            row.sizeDelta = new Vector2(-20f, 64f);
+
+            HorizontalLayoutGroup layout = row.GetComponent<HorizontalLayoutGroup>();
+            layout.childAlignment = TextAnchor.MiddleLeft;
+            layout.childControlWidth = false;
+            layout.childControlHeight = true;
+            layout.childForceExpandWidth = false;
+            layout.childForceExpandHeight = false;
+            layout.spacing = 10f;
+            layout.padding = new RectOffset(10, 10, 0, 0);
+            return row;
+        }
+
         private static Button EnsureButton(Transform parent, string name, string label, Vector2 anchoredPos, Vector2 size)
         {
             Transform existing = parent.Find(name);
@@ -509,7 +866,8 @@ namespace MidnightFamiliar.Combat.Presentation.Editor
         private static void WireBattleController(
             BattleHudController hudController,
             BattleActionPanelController actionPanelController,
-            BattleCombatLogPanelController combatLogPanelController)
+            BattleCombatLogPanelController combatLogPanelController,
+            BattleOpportunityPanelController opportunityPanelController)
         {
             BattleController battleController = Object.FindFirstObjectByType<BattleController>();
             if (battleController == null)
@@ -534,6 +892,12 @@ namespace MidnightFamiliar.Combat.Presentation.Editor
             if (combatLogProp != null)
             {
                 combatLogProp.objectReferenceValue = combatLogPanelController;
+            }
+
+            SerializedProperty opportunityPanelProp = so.FindProperty("opportunityPanelController");
+            if (opportunityPanelProp != null)
+            {
+                opportunityPanelProp.objectReferenceValue = opportunityPanelController;
             }
 
             so.ApplyModifiedPropertiesWithoutUndo();

@@ -39,46 +39,131 @@ namespace MidnightFamiliar.Combat.Content
                     DisplayName = definition.TraitName,
                     Description = definition.TraitDescription
                 },
-                Actions = BuildActions(definition.Actions)
+                Actions = BuildActions(definition.Actions, definition.PrimaryType)
             };
 
             unit.InitializeHealth();
             return unit;
         }
 
-        private static List<CuidAction> BuildActions(IReadOnlyList<ActionDefinition> definitions)
+        private static List<CuidAction> BuildActions(IReadOnlyList<ActionDefinition> definitions, CuidType primaryType)
         {
             var actions = new List<CuidAction>(4);
+            if (definitions != null)
+            {
+                for (int i = 0; i < definitions.Count; i++)
+                {
+                    ActionDefinition actionDefinition = definitions[i];
+                    if (actionDefinition == null)
+                    {
+                        continue;
+                    }
+
+                    actions.Add(new CuidAction
+                    {
+                        Id = actionDefinition.ActionId,
+                        DisplayName = actionDefinition.DisplayName,
+                        Description = actionDefinition.Description,
+                        Kind = actionDefinition.Kind,
+                        AbilityIntent = actionDefinition.AbilityIntent,
+                        ActionType = actionDefinition.ActionType,
+                        TargetRule = actionDefinition.TargetRule,
+                        Range = actionDefinition.Range,
+                        HitBonus = actionDefinition.HitBonus,
+                        Potency = actionDefinition.Potency,
+                        CooldownTurns = actionDefinition.CooldownTurns,
+                        SupportEffects = BuildSupportEffects(actionDefinition.SupportEffects)
+                    });
+                }
+            }
+
+            bool hasExistingBasicAttack = actions.Exists(action =>
+                action != null &&
+                (action.IsBasicAttack || action.Id.StartsWith("basic_", StringComparison.OrdinalIgnoreCase)));
+            if (!hasExistingBasicAttack)
+            {
+                actions.Add(BuildBasicAttackForPrimaryType(primaryType));
+            }
+
+            return actions;
+        }
+
+        private static List<SupportEffect> BuildSupportEffects(IReadOnlyList<SupportEffect> definitions)
+        {
+            var effects = new List<SupportEffect>(definitions != null ? definitions.Count : 0);
             if (definitions == null)
             {
-                return actions;
+                return effects;
             }
 
             for (int i = 0; i < definitions.Count; i++)
             {
-                ActionDefinition actionDefinition = definitions[i];
-                if (actionDefinition == null)
+                SupportEffect effect = definitions[i];
+                if (effect == null)
                 {
                     continue;
                 }
 
-                actions.Add(new CuidAction
-                {
-                    Id = actionDefinition.ActionId,
-                    DisplayName = actionDefinition.DisplayName,
-                    Description = actionDefinition.Description,
-                    Kind = actionDefinition.Kind,
-                    AbilityIntent = actionDefinition.AbilityIntent,
-                    ActionType = actionDefinition.ActionType,
-                    TargetRule = actionDefinition.TargetRule,
-                    Range = actionDefinition.Range,
-                    HitBonus = actionDefinition.HitBonus,
-                    Potency = actionDefinition.Potency,
-                    CooldownTurns = actionDefinition.CooldownTurns
-                });
+                effects.Add(effect.Clone());
             }
 
-            return actions;
+            return effects;
+        }
+
+        private static CuidAction BuildBasicAttackForPrimaryType(CuidType primaryType)
+        {
+            return BasicAttackCatalog.CreateForType(primaryType);
+        }
+    }
+
+    internal static class BasicAttackCatalog
+    {
+        public static CuidAction CreateForType(CuidType type)
+        {
+            string typeName = type == CuidType.None ? "Neutral" : type.ToString();
+            return new CuidAction
+            {
+                Id = $"basic_{typeName.ToLowerInvariant()}",
+                DisplayName = GetBasicAttackDisplayName(type),
+                Description = GetBasicAttackDescription(type),
+                Kind = ActionKind.Attack,
+                AbilityIntent = AbilityIntent.None,
+                ActionType = type,
+                TargetRule = TargetRule.EnemySingle,
+                Range = 1,
+                HitBonus = 0,
+                Potency = 4,
+                CooldownTurns = 0,
+                IsBasicAttack = true
+            };
+        }
+
+        private static string GetBasicAttackDisplayName(CuidType type)
+        {
+            switch (type)
+            {
+                case CuidType.Ember:
+                    return "Ember Snap";
+                case CuidType.Tide:
+                    return "Tidal Jab";
+                case CuidType.Flora:
+                    return "Vine Lash";
+                case CuidType.Stone:
+                    return "Stone Knuckle";
+                case CuidType.Arcane:
+                    return "Arc Spark";
+                case CuidType.Beast:
+                    return "Feral Swipe";
+                case CuidType.None:
+                default:
+                    return "Basic Strike";
+            }
+        }
+
+        private static string GetBasicAttackDescription(CuidType type)
+        {
+            string label = type == CuidType.None ? "neutral" : type.ToString().ToLowerInvariant();
+            return $"Reliable {label} basic attack.";
         }
     }
 }

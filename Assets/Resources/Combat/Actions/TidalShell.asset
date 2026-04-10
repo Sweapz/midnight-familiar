@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 07fb8a816f8bff64ca6e764d88b0286f, type: 3}
+  m_Name: TidalShell
+  m_EditorClassIdentifier: MidnightFamiliar.Runtime::MidnightFamiliar.Combat.Content.ActionDefinition
+  actionId: tidal_shell
+  displayName: Tidal Shell
+  description: Creates a defensive shell of water around the target increasing their
+    defense stat.
+  kind: 1
+  abilityIntent: 2
+  actionType: 6
+  targetRule: 2
+  range: 3
+  hitBonus: 0
+  potency: 0
+  cooldownTurns: 0
+  supportEffects:
+  - Kind: 1
+    TargetStat: 1
+    Magnitude: 2
+    DurationTurns: 2

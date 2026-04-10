@@ -1,10 +1,12 @@
 using MidnightFamiliar.Combat.Models;
+using System;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace MidnightFamiliar.Combat.Presentation.UI
 {
-    public sealed class BattleTurnOrderEntryView : MonoBehaviour
+    public sealed class BattleTurnOrderEntryView : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
     {
         [Header("References")]
         [SerializeField] private Image background;
@@ -18,12 +20,19 @@ namespace MidnightFamiliar.Combat.Presentation.UI
         [SerializeField] private Color currentTurnColor = new Color(1f, 0.85f, 0.32f, 0.96f);
         [SerializeField] private Color defeatedTint = new Color(0.45f, 0.45f, 0.45f, 0.85f);
 
+        private string _combatantId = string.Empty;
+
+        public event Action<string> HoverStarted;
+        public event Action<string> HoverEnded;
+
         public void Bind(TurnOrderHudEntry entry, bool isCurrentTurn)
         {
             if (entry == null)
             {
                 return;
             }
+
+            _combatantId = entry.CombatantId;
 
             if (nameLabel != null)
             {
@@ -53,6 +62,30 @@ namespace MidnightFamiliar.Combat.Presentation.UI
             }
 
             background.color = isCurrentTurn ? currentTurnColor : baseColor;
+        }
+
+        public void OnPointerEnter(PointerEventData eventData)
+        {
+            if (!string.IsNullOrWhiteSpace(_combatantId))
+            {
+                HoverStarted?.Invoke(_combatantId);
+            }
+        }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            if (!string.IsNullOrWhiteSpace(_combatantId))
+            {
+                HoverEnded?.Invoke(_combatantId);
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (!string.IsNullOrWhiteSpace(_combatantId))
+            {
+                HoverEnded?.Invoke(_combatantId);
+            }
         }
     }
 }

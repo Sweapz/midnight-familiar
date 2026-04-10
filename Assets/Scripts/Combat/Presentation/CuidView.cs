@@ -1,4 +1,5 @@
 using MidnightFamiliar.Combat.Models;
+using System;
 using UnityEngine;
 
 namespace MidnightFamiliar.Combat.Presentation
@@ -11,6 +12,8 @@ namespace MidnightFamiliar.Combat.Presentation
         [SerializeField] private Color defeatedColor = Color.gray;
 
         public string CombatantId { get; private set; } = string.Empty;
+        public event Action<string> HoverStarted;
+        public event Action<string> HoverEnded;
 
         public void Initialize(CombatantState combatant)
         {
@@ -39,6 +42,22 @@ namespace MidnightFamiliar.Combat.Presentation
             }
 
             targetRenderer.material.color = combatant.Team == TeamSide.Player ? playerColor : enemyColor;
+        }
+
+        private void OnMouseEnter()
+        {
+            if (!string.IsNullOrWhiteSpace(CombatantId))
+            {
+                HoverStarted?.Invoke(CombatantId);
+            }
+        }
+
+        private void OnMouseExit()
+        {
+            if (!string.IsNullOrWhiteSpace(CombatantId))
+            {
+                HoverEnded?.Invoke(CombatantId);
+            }
         }
     }
 }

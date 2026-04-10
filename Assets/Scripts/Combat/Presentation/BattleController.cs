@@ -1,11 +1,13 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using MidnightFamiliar.Combat.Content;
 using MidnightFamiliar.Combat.Models;
 using MidnightFamiliar.Combat.Presentation.UI;
 using MidnightFamiliar.Combat.Systems;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 namespace MidnightFamiliar.Combat.Presentation
 {
@@ -32,6 +34,7 @@ namespace MidnightFamiliar.Combat.Presentation
         [SerializeField] private BattleHudController hudController;
         [SerializeField] private BattleActionPanelController actionPanelController;
         [SerializeField] private BattleCombatLogPanelController combatLogPanelController;
+        [SerializeField] private BattleOpportunityPanelController opportunityPanelController;
         [SerializeField] private GameObject defaultCuidViewPrefab;
         [SerializeField] private List<CuidPrefabBinding> cuidPrefabBindings = new List<CuidPrefabBinding>();
 
@@ -43,6 +46,8 @@ namespace MidnightFamiliar.Combat.Presentation
         [SerializeField] private bool startBattleOnStart = true;
         [SerializeField] private float turnDelaySeconds = 0.7f;
         [SerializeField] private float moveDurationSeconds = 0.25f;
+        [SerializeField] private int maxCombatLogEntries = 300;
+        [SerializeField] private float hoverWorldYOffset = 1.2f;
 
         [Header("Move Markers")]
         [SerializeField] private bool showReachableMoveMarkers = true;
@@ -58,10 +63,13 @@ namespace MidnightFamiliar.Combat.Presentation
 
         private readonly Dictionary<string, CuidView> _views = new Dictionary<string, CuidView>();
         private readonly Dictionary<string, CuidDefinition> _definitionsBySpeciesId = new Dictionary<string, CuidDefinition>();
-        private readonly List<string> _combatLog = new List<string>(12);
+        private readonly List<BattleCombatLogPanelController.LogEntry> _combatLog = new List<BattleCombatLogPanelController.LogEntry>(12);
         private readonly List<GridPosition> _validMoveCells = new List<GridPosition>();
         private readonly List<GameObject> _moveMarkers = new List<GameObject>();
         private readonly List<GameObject> _actionMarkers = new List<GameObject>();
+        private readonly CombatResolver _opportunityResolver = new CombatResolver();
+        private readonly List<CuidAction> _pendingOpportunityActions = new List<CuidAction>(3);
+        private readonly HashSet<string> _spentOpportunityCombatants = new HashSet<string>();
 
         private TurnController _turnController;
         private Coroutine _loopRoutine;
@@ -75,6 +83,14 @@ namespace MidnightFamiliar.Combat.Presentation
         private bool _loggedHudMissingError;
         private bool _loggedTurnOrderEmptyWarning;
         private bool _actionPanelCallbacksRegistered;
+        private bool _hudHoverCallbacksRegistered;
+        private bool _opportunityPanelCallbacksRegistered;
+        private bool _awaitingOpportunityChoice;
+        private int _selectedOpportunityIndex = -1;
+        private bool _declinedOpportunity;
+        private string _hoveredCombatantId = string.Empty;
+        private string _hudHoveredCombatantId = string.Empty;
+        private string _worldHoveredCombatantId = string.Empty;
         private int _remainingMovement;
         private bool _hasUsedAction;
 
@@ -83,6 +99,7 @@ namespace MidnightFamiliar.Combat.Presentation
             EnsureHudReference();
             EnsureActionPanelReference();
             EnsureCombatLogPanelReference();
+            EnsureOpportunityPanelReference();
             if (startBattleOnStart)
             {
                 StartBattle();
@@ -96,12 +113,10 @@ namespace MidnightFamiliar.Combat.Presentation
                 return;
             }
 
-            if (_activePlayerActor == null || _isMovingActor)
-            {
-                return;
-            }
+            UpdateWorldHoveredCombatantId();
+            RefreshHoverTooltipIfNeeded();
 
-            if (Input.GetMouseButtonDown(0))
+            if (_activePlayerActor != null && !_isMovingActor && !_awaitingOpportunityChoice && Input.GetMouseButtonDown(0))
             {
                 HandlePlayerClick();
             }
@@ -115,6 +130,21 @@ namespace MidnightFamiliar.Combat.Presentation
                 actionPanelController.EndTurnPressed -= HandleActionPanelEndTurnClicked;
                 _actionPanelCallbacksRegistered = false;
             }
+
+            if (hudController != null && _hudHoverCallbacksRegistered)
+            {
+                hudController.TurnOrderHoverStarted -= HandleHudCombatantHoverStarted;
+                hudController.TurnOrderHoverEnded -= HandleHudCombatantHoverEnded;
+                _hudHoverCallbacksRegistered = false;
+            }
+
+            if (opportunityPanelController != null && _opportunityPanelCallbacksRegistered)
+            {
+                opportunityPanelController.ActionSelected -= HandleOpportunityActionSelected;
+                opportunityPanelController.Declined -= HandleOpportunityDeclined;
+                _opportunityPanelCallbacksRegistered = false;
+            }
+
         }
 
         [ContextMenu("Start Battle")]
@@ -123,6 +153,7 @@ namespace MidnightFamiliar.Combat.Presentation
             EnsureHudReference();
             EnsureActionPanelReference();
             EnsureCombatLogPanelReference();
+            EnsureOpportunityPanelReference();
             if (gridController == null)
             {
                 Debug.LogError("BattleController needs a BattleGridController reference.");
@@ -141,15 +172,28 @@ namespace MidnightFamiliar.Combat.Presentation
             _remainingMovement = 0;
             _hasUsedAction = false;
             _combatLog.Clear();
+            _hoveredCombatantId = string.Empty;
+            _hudHoveredCombatantId = string.Empty;
+            _worldHoveredCombatantId = string.Empty;
+            _pendingOpportunityActions.Clear();
+            _spentOpportunityCombatants.Clear();
+            _awaitingOpportunityChoice = false;
+            _selectedOpportunityIndex = -1;
+            _declinedOpportunity = false;
             ClearMoveMarkers();
             ClearActionMarkers();
             if (hudController != null)
             {
                 hudController.ClearTurnOrder();
+                hudController.HideHoverTooltip();
             }
             if (actionPanelController != null)
             {
                 actionPanelController.SetVisible(false);
+            }
+            if (opportunityPanelController != null)
+            {
+                opportunityPanelController.SetVisible(false);
             }
             if (combatLogPanelController != null)
             {
@@ -180,6 +224,9 @@ namespace MidnightFamiliar.Combat.Presentation
                 {
                     break;
                 }
+
+                // Opportunity actions refresh when this Cuid's turn starts.
+                _spentOpportunityCombatants.Remove(actor.CombatantId);
 
                 if (actor.Team == TeamSide.Player)
                 {
@@ -237,7 +284,20 @@ namespace MidnightFamiliar.Combat.Presentation
                 yield break;
             }
 
+            GridPosition moveStart = actor.Position;
             yield return MoveActorTowardTarget(actor, target);
+            if (actor.IsDefeated)
+            {
+                TurnStepResult forcedPass = _turnController.ExecuteTurn(TurnChoice.Pass());
+                AddLogFromStep(forcedPass);
+                RefreshHud();
+                yield break;
+            }
+
+            int movementBudget = GetMoveRange(actor);
+            int movementUsed = moveStart.ManhattanDistanceTo(actor.Position);
+            int movementRemaining = Mathf.Max(0, movementBudget - movementUsed);
+
             TurnChoice choice = BuildEnemyChoice(actor, target);
             TurnStepResult step = _turnController.ExecuteTurn(choice);
             if (!step.Success && !choice.IsPass)
@@ -246,6 +306,7 @@ namespace MidnightFamiliar.Combat.Presentation
                 step = _turnController.ExecuteTurn(TurnChoice.Pass());
             }
             AddLogFromStep(step);
+            yield return TryEnemyDisengageForTesting(actor, movementRemaining);
             RefreshHud();
         }
 
@@ -295,6 +356,13 @@ namespace MidnightFamiliar.Combat.Presentation
             ClearActionMarkers();
 
             GridPosition start = _activePlayerActor.Position;
+            yield return ResolveOpportunityAttacksBeforeMove(_activePlayerActor, start, destination);
+            if (_activePlayerActor == null || _activePlayerActor.IsDefeated)
+            {
+                _isMovingActor = false;
+                yield break;
+            }
+
             _activePlayerActor.Position = destination;
 
             if (_views.TryGetValue(_activePlayerActor.CombatantId, out CuidView view) && view != null)
@@ -628,7 +696,8 @@ namespace MidnightFamiliar.Combat.Presentation
 
         private int GetMoveRange(CombatantState actor)
         {
-            return Mathf.Clamp(Mathf.Max(1, actor.Unit.Stats.Speed / 4), 1, 3);
+            int speed = actor != null ? actor.GetEffectiveStats().Speed : 1;
+            return Mathf.Clamp(Mathf.Max(1, speed / 4), 1, 3);
         }
 
         private IEnumerator MoveActorTowardTarget(CombatantState actor, CombatantState target)
@@ -636,6 +705,12 @@ namespace MidnightFamiliar.Combat.Presentation
             GridPosition start = actor.Position;
             GridPosition end = CalculateMoveDestination(actor, target);
             if (start.X == end.X && start.Y == end.Y)
+            {
+                yield break;
+            }
+
+            yield return ResolveOpportunityAttacksBeforeMove(actor, start, end);
+            if (actor == null || actor.IsDefeated)
             {
                 yield break;
             }
@@ -658,6 +733,188 @@ namespace MidnightFamiliar.Combat.Presentation
             }
 
             view.transform.position = worldEnd;
+        }
+
+        private IEnumerator ResolveOpportunityAttacksBeforeMove(CombatantState mover, GridPosition from, GridPosition to)
+        {
+            if (mover == null || mover.IsDefeated || _turnController?.BattleState == null)
+            {
+                yield break;
+            }
+
+            List<CombatantState> threateners = GetThreatenersOnMoveAway(mover, from, to);
+            for (int i = 0; i < threateners.Count; i++)
+            {
+                CombatantState attacker = threateners[i];
+                if (attacker == null || attacker.IsDefeated || mover.IsDefeated)
+                {
+                    continue;
+                }
+
+                List<CuidAction> availableActions = GetAvailableOpportunityActions(attacker);
+                if (availableActions.Count == 0)
+                {
+                    continue;
+                }
+
+                CuidAction chosenAction = null;
+                if (attacker.Team == TeamSide.Player && mover.Team == TeamSide.Enemy)
+                {
+                    yield return PromptPlayerOpportunityChoice(attacker, mover, availableActions);
+                    if (_declinedOpportunity)
+                    {
+                        continue;
+                    }
+
+                    if (_selectedOpportunityIndex >= 0 && _selectedOpportunityIndex < _pendingOpportunityActions.Count)
+                    {
+                        chosenAction = _pendingOpportunityActions[_selectedOpportunityIndex];
+                    }
+                }
+                else
+                {
+                    // Enemy reactions are automatic for now.
+                    chosenAction = availableActions[0];
+                }
+
+                if (chosenAction == null)
+                {
+                    continue;
+                }
+
+                ResolveOpportunityAction(attacker, mover, chosenAction);
+                if (mover.IsDefeated && mover.Team == TeamSide.Player && mover == _activePlayerActor)
+                {
+                    EndCurrentPlayerTurnAfterDefeat();
+                    yield break;
+                }
+            }
+        }
+
+        private List<CombatantState> GetThreatenersOnMoveAway(CombatantState mover, GridPosition from, GridPosition to)
+        {
+            var threateners = new List<CombatantState>(3);
+            if (_turnController?.BattleState?.Combatants == null)
+            {
+                return threateners;
+            }
+
+            for (int i = 0; i < _turnController.BattleState.Combatants.Count; i++)
+            {
+                CombatantState candidate = _turnController.BattleState.Combatants[i];
+                if (candidate == null ||
+                    candidate.IsDefeated ||
+                    candidate.CombatantId == mover.CombatantId ||
+                    candidate.Team == mover.Team)
+                {
+                    continue;
+                }
+
+                int fromDistance = candidate.Position.ManhattanDistanceTo(from);
+                int toDistance = candidate.Position.ManhattanDistanceTo(to);
+                if (fromDistance <= 1 && toDistance > 1)
+                {
+                    threateners.Add(candidate);
+                }
+            }
+
+            threateners.Sort((a, b) => string.CompareOrdinal(a.CombatantId, b.CombatantId));
+            return threateners;
+        }
+
+        private List<CuidAction> GetAvailableOpportunityActions(CombatantState attacker)
+        {
+            if (attacker?.Unit?.Actions == null)
+            {
+                return new List<CuidAction>(0);
+            }
+
+            if (_spentOpportunityCombatants.Contains(attacker.CombatantId))
+            {
+                return new List<CuidAction>(0);
+            }
+
+            return attacker.Unit.Actions
+                .Where(action => action != null && action.IsBasicAttack && action.Kind == ActionKind.Attack)
+                .ToList();
+        }
+
+        private IEnumerator PromptPlayerOpportunityChoice(
+            CombatantState attacker,
+            CombatantState movingTarget,
+            IReadOnlyList<CuidAction> availableActions)
+        {
+            _pendingOpportunityActions.Clear();
+            for (int i = 0; i < availableActions.Count; i++)
+            {
+                CuidAction action = availableActions[i];
+                if (action != null)
+                {
+                    _pendingOpportunityActions.Add(action);
+                }
+            }
+
+            if (_pendingOpportunityActions.Count == 0)
+            {
+                _selectedOpportunityIndex = -1;
+                _declinedOpportunity = true;
+                yield break;
+            }
+
+            EnsureOpportunityPanelReference();
+            if (opportunityPanelController == null)
+            {
+                _selectedOpportunityIndex = -1;
+                _declinedOpportunity = true;
+                yield break;
+            }
+
+            string prompt = $"{attacker.Unit.DisplayName}: take opportunity action on {movingTarget.Unit.DisplayName}?";
+            List<string> labels = _pendingOpportunityActions.Select(action => action.DisplayName).ToList();
+            _selectedOpportunityIndex = -1;
+            _declinedOpportunity = false;
+            _awaitingOpportunityChoice = true;
+            opportunityPanelController.ShowPrompt(prompt, labels);
+
+            while (_awaitingOpportunityChoice)
+            {
+                yield return null;
+            }
+
+            opportunityPanelController.SetVisible(false);
+        }
+
+        private void ResolveOpportunityAction(CombatantState attacker, CombatantState target, CuidAction action)
+        {
+            if (attacker == null || target == null || action == null || attacker.IsDefeated || target.IsDefeated)
+            {
+                return;
+            }
+
+            _spentOpportunityCombatants.Add(attacker.CombatantId);
+
+            ActionResolution resolution = _opportunityResolver.ResolveAction(attacker, target, action);
+            resolution.Summary = $"Opportunity: {resolution.Summary}";
+            _combatLog.Insert(0, BuildResolutionLogEntry(_turnController.BattleState.RoundNumber, resolution));
+            TrimCombatLog();
+            RefreshCombatLogPanel();
+            RefreshAllViews();
+        }
+
+        private void EndCurrentPlayerTurnAfterDefeat()
+        {
+            _remainingMovement = 0;
+            _selectedAction = null;
+            _inputPhase = PlayerInputPhase.None;
+            ClearMoveMarkers();
+            ClearActionMarkers();
+
+            TurnStepResult endStep = _turnController.ExecuteTurn(TurnChoice.Pass(), advanceTurn: true);
+            AddLogFromStep(endStep);
+            _activePlayerActor = null;
+            _playerTurnResolved = true;
+            RefreshHud();
+            RefreshActionPanel();
         }
 
         private GridPosition CalculateMoveDestination(CombatantState actor, CombatantState target)
@@ -920,6 +1177,151 @@ namespace MidnightFamiliar.Combat.Presentation
             }
 
             RefreshHud();
+            RefreshHoverTooltipIfNeeded();
+        }
+
+        private IEnumerator TryEnemyDisengageForTesting(CombatantState actor, int movementRemaining)
+        {
+            if (actor == null || actor.IsDefeated || actor.Team != TeamSide.Enemy)
+            {
+                yield break;
+            }
+
+            if (movementRemaining <= 0)
+            {
+                yield break;
+            }
+
+            if (!HasAnyRangedAction(actor) || !IsAdjacentToAnyOpponent(actor))
+            {
+                yield break;
+            }
+
+            if (Random.value > 1f)
+            {
+                yield break;
+            }
+
+            GridPosition from = actor.Position;
+            GridPosition to = FindDisengageDestination(actor);
+            if (from.X == to.X && from.Y == to.Y)
+            {
+                yield break;
+            }
+
+            int disengageCost = from.ManhattanDistanceTo(to);
+            if (disengageCost <= 0 || disengageCost > movementRemaining)
+            {
+                yield break;
+            }
+
+            yield return ResolveOpportunityAttacksBeforeMove(actor, from, to);
+            if (actor.IsDefeated)
+            {
+                yield break;
+            }
+
+            actor.Position = to;
+            if (!_views.TryGetValue(actor.CombatantId, out CuidView view) || view == null)
+            {
+                yield break;
+            }
+
+            Vector3 worldStart = gridController.GridToWorld(from);
+            Vector3 worldEnd = gridController.GridToWorld(to);
+            float elapsed = 0f;
+            while (elapsed < moveDurationSeconds)
+            {
+                elapsed += Time.deltaTime;
+                float t = moveDurationSeconds <= 0f ? 1f : Mathf.Clamp01(elapsed / moveDurationSeconds);
+                view.transform.position = Vector3.Lerp(worldStart, worldEnd, t);
+                yield return null;
+            }
+
+            view.transform.position = worldEnd;
+        }
+
+        private bool HasAnyRangedAction(CombatantState actor)
+        {
+            if (actor?.Unit?.Actions == null)
+            {
+                return false;
+            }
+
+            return actor.Unit.Actions.Any(action => action != null && action.Range > 1);
+        }
+
+        private bool IsAdjacentToAnyOpponent(CombatantState actor)
+        {
+            if (_turnController?.BattleState?.Combatants == null || actor == null)
+            {
+                return false;
+            }
+
+            return _turnController.BattleState.Combatants.Any(other =>
+                other != null &&
+                !other.IsDefeated &&
+                other.Team != actor.Team &&
+                other.Position.ManhattanDistanceTo(actor.Position) <= 1);
+        }
+
+        private GridPosition FindDisengageDestination(CombatantState actor)
+        {
+            GridPosition from = actor.Position;
+            GridPosition[] candidates =
+            {
+                new GridPosition(from.X + 1, from.Y),
+                new GridPosition(from.X - 1, from.Y),
+                new GridPosition(from.X, from.Y + 1),
+                new GridPosition(from.X, from.Y - 1)
+            };
+
+            int currentScore = GetNearestOpponentDistance(actor.Team, from);
+            int bestScore = currentScore;
+            GridPosition best = from;
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                GridPosition candidate = candidates[i];
+                if (!gridController.IsInside(candidate) || IsOccupied(candidate, actor.CombatantId))
+                {
+                    continue;
+                }
+
+                int score = GetNearestOpponentDistance(actor.Team, candidate);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    best = candidate;
+                }
+            }
+
+            return best;
+        }
+
+        private int GetNearestOpponentDistance(TeamSide team, GridPosition position)
+        {
+            if (_turnController?.BattleState?.Combatants == null)
+            {
+                return 0;
+            }
+
+            int best = int.MaxValue;
+            for (int i = 0; i < _turnController.BattleState.Combatants.Count; i++)
+            {
+                CombatantState other = _turnController.BattleState.Combatants[i];
+                if (other == null || other.IsDefeated || other.Team == team)
+                {
+                    continue;
+                }
+
+                int distance = other.Position.ManhattanDistanceTo(position);
+                if (distance < best)
+                {
+                    best = distance;
+                }
+            }
+
+            return best == int.MaxValue ? 0 : best;
         }
 
         private void AddLogFromStep(TurnStepResult step)
@@ -929,15 +1331,16 @@ namespace MidnightFamiliar.Combat.Presentation
                 return;
             }
 
-            string line = step.Resolution != null
-                ? $"R{step.RoundNumber}: {step.Resolution.Summary}"
-                : $"R{step.RoundNumber}: {step.Message}";
+            var entry = step.Resolution != null
+                ? BuildResolutionLogEntry(step.RoundNumber, step.Resolution)
+                : new BattleCombatLogPanelController.LogEntry
+                {
+                    DisplayText = $"R{step.RoundNumber}: {EscapeRichText(step.Message)}",
+                    HoverDetail = string.Empty
+                };
 
-            _combatLog.Insert(0, line);
-            if (_combatLog.Count > 10)
-            {
-                _combatLog.RemoveAt(_combatLog.Count - 1);
-            }
+            _combatLog.Insert(0, entry);
+            TrimCombatLog();
 
             RefreshCombatLogPanel();
         }
@@ -945,7 +1348,12 @@ namespace MidnightFamiliar.Combat.Presentation
         private void FinishBattle(TeamSide? winner)
         {
             string winnerText = winner.HasValue ? winner.Value.ToString() : "None";
-            _combatLog.Insert(0, $"Battle ended. Winner: {winnerText}");
+            _combatLog.Insert(0, new BattleCombatLogPanelController.LogEntry
+            {
+                DisplayText = $"Battle ended. Winner: {EscapeRichText(winnerText)}",
+                HoverDetail = string.Empty
+            });
+            TrimCombatLog();
             RefreshCombatLogPanel();
             RefreshHud();
             RefreshActionPanel();
@@ -1012,7 +1420,7 @@ namespace MidnightFamiliar.Combat.Presentation
                     CombatantId = combatant.CombatantId,
                     DisplayName = combatant.Unit?.DisplayName ?? "Cuid",
                     CurrentHp = Mathf.Max(0, combatant.CurrentHealth),
-                    MaxHp = Mathf.Max(1, combatant.Unit?.Stats?.Constitution ?? 1),
+                    MaxHp = combatant.GetMaxHealth(),
                     Portrait = portrait,
                     Team = combatant.Team,
                     IsDefeated = combatant.IsDefeated
@@ -1030,16 +1438,30 @@ namespace MidnightFamiliar.Combat.Presentation
             }
 
             hudController.SetTurnOrder(entries, currentCombatantId, _turnController.BattleState.RoundNumber);
+            RefreshHoverTooltipIfNeeded();
         }
 
         private void EnsureHudReference()
         {
             if (hudController != null)
             {
+                if (!_hudHoverCallbacksRegistered)
+                {
+                    hudController.TurnOrderHoverStarted += HandleHudCombatantHoverStarted;
+                    hudController.TurnOrderHoverEnded += HandleHudCombatantHoverEnded;
+                    _hudHoverCallbacksRegistered = true;
+                }
+
                 return;
             }
 
             hudController = FindFirstObjectByType<BattleHudController>();
+            if (hudController != null && !_hudHoverCallbacksRegistered)
+            {
+                hudController.TurnOrderHoverStarted += HandleHudCombatantHoverStarted;
+                hudController.TurnOrderHoverEnded += HandleHudCombatantHoverEnded;
+                _hudHoverCallbacksRegistered = true;
+            }
         }
 
         private void EnsureActionPanelReference()
@@ -1067,6 +1489,21 @@ namespace MidnightFamiliar.Combat.Presentation
             combatLogPanelController = FindFirstObjectByType<BattleCombatLogPanelController>();
         }
 
+        private void EnsureOpportunityPanelReference()
+        {
+            if (opportunityPanelController == null)
+            {
+                opportunityPanelController = FindFirstObjectByType<BattleOpportunityPanelController>();
+            }
+
+            if (opportunityPanelController != null && !_opportunityPanelCallbacksRegistered)
+            {
+                opportunityPanelController.ActionSelected += HandleOpportunityActionSelected;
+                opportunityPanelController.Declined += HandleOpportunityDeclined;
+                _opportunityPanelCallbacksRegistered = true;
+            }
+        }
+
         private void HandleActionPanelActionClicked(int buttonIndex)
         {
             if (_activePlayerActor == null)
@@ -1089,7 +1526,7 @@ namespace MidnightFamiliar.Combat.Presentation
                 return;
             }
 
-            List<CuidAction> actions = _activePlayerActor.Unit.Actions.Where(a => a != null).ToList();
+            List<CuidAction> actions = GetOrderedActionsForUi(_activePlayerActor);
             if (buttonIndex < 0 || buttonIndex >= actions.Count)
             {
                 return;
@@ -1129,6 +1566,30 @@ namespace MidnightFamiliar.Combat.Presentation
             RefreshActionPanel();
         }
 
+        private void HandleOpportunityActionSelected(int index)
+        {
+            if (!_awaitingOpportunityChoice)
+            {
+                return;
+            }
+
+            _selectedOpportunityIndex = index;
+            _declinedOpportunity = false;
+            _awaitingOpportunityChoice = false;
+        }
+
+        private void HandleOpportunityDeclined()
+        {
+            if (!_awaitingOpportunityChoice)
+            {
+                return;
+            }
+
+            _selectedOpportunityIndex = -1;
+            _declinedOpportunity = true;
+            _awaitingOpportunityChoice = false;
+        }
+
         private void RefreshActionPanel()
         {
             EnsureActionPanelReference();
@@ -1159,8 +1620,7 @@ namespace MidnightFamiliar.Combat.Presentation
             }
             else
             {
-                List<string> labels = _activePlayerActor.Unit.Actions
-                    .Where(action => action != null)
+                List<string> labels = GetOrderedActionsForUi(_activePlayerActor)
                     .Select(action => action.DisplayName)
                     .ToList();
 
@@ -1170,9 +1630,25 @@ namespace MidnightFamiliar.Combat.Presentation
             actionPanelController.SetStatus(
                 _activePlayerActor.Unit.DisplayName,
                 Mathf.Max(0, _activePlayerActor.CurrentHealth),
-                Mathf.Max(1, _activePlayerActor.Unit.Stats.Constitution),
+                _activePlayerActor.GetMaxHealth(),
                 _remainingMovement,
                 portrait);
+        }
+
+        private static List<CuidAction> GetOrderedActionsForUi(CombatantState actor)
+        {
+            if (actor?.Unit?.Actions == null)
+            {
+                return new List<CuidAction>(0);
+            }
+
+            return actor.Unit.Actions
+                .Select((action, index) => new { action, index })
+                .Where(pair => pair.action != null)
+                .OrderByDescending(pair => pair.action.IsBasicAttack)
+                .ThenBy(pair => pair.index)
+                .Select(pair => pair.action)
+                .ToList();
         }
 
         private void RefreshCombatLogPanel()
@@ -1184,6 +1660,70 @@ namespace MidnightFamiliar.Combat.Presentation
             }
 
             combatLogPanelController.SetEntries(_combatLog);
+        }
+
+        private void TrimCombatLog()
+        {
+            int cap = Mathf.Max(10, maxCombatLogEntries);
+            while (_combatLog.Count > cap)
+            {
+                _combatLog.RemoveAt(_combatLog.Count - 1);
+            }
+        }
+
+        private BattleCombatLogPanelController.LogEntry BuildResolutionLogEntry(int roundNumber, ActionResolution resolution)
+        {
+            CombatantState actor = _turnController?.BattleState?.FindCombatant(resolution.ActorCombatantId);
+            CombatantState target = _turnController?.BattleState?.FindCombatant(resolution.TargetCombatantId);
+
+            string actorText = FormatCombatantLogLabel(actor, resolution.ActorCombatantId);
+            string targetText = FormatCombatantLogLabel(target, resolution.TargetCombatantId);
+            string summary = EscapeRichText(resolution.Summary);
+            string display = $"R{roundNumber}: {actorText} -> {targetText}: {summary}";
+
+            string hoverDetail = string.Empty;
+            bool isOffensive =
+                resolution.Kind == ActionKind.Attack ||
+                (resolution.Kind == ActionKind.Ability && resolution.AbilityIntent == AbilityIntent.Offensive);
+            if (isOffensive)
+            {
+                string rollType = resolution.Kind == ActionKind.Attack
+                    ? "Attack vs Defense"
+                    : "Ability vs Resistance";
+                hoverDetail = $"{rollType}: {resolution.AttackRoll} vs {resolution.DefenseRoll}";
+                if (!string.IsNullOrWhiteSpace(resolution.DamageBreakdown))
+                {
+                    hoverDetail += $"\n{resolution.DamageBreakdown}";
+                }
+            }
+
+            return new BattleCombatLogPanelController.LogEntry
+            {
+                DisplayText = display,
+                HoverDetail = hoverDetail
+            };
+        }
+
+        private static string FormatCombatantLogLabel(CombatantState combatant, string fallbackId)
+        {
+            string name = combatant != null && combatant.Unit != null
+                ? combatant.Unit.DisplayName
+                : string.IsNullOrWhiteSpace(fallbackId) ? "Unknown" : fallbackId;
+
+            TeamSide team = combatant != null ? combatant.Team : TeamSide.Enemy;
+            string role = team == TeamSide.Player ? "Ally" : "Enemy";
+            string colorHex = team == TeamSide.Player ? "388CEB" : "D95757";
+            return $"<color=#{colorHex}>{EscapeRichText(name)} [{role}]</color>";
+        }
+
+        private static string EscapeRichText(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            return value.Replace("<", "&lt;").Replace(">", "&gt;");
         }
 
         private void EnsureDefaultDefinitionsIfNeeded()
@@ -1211,5 +1751,218 @@ namespace MidnightFamiliar.Combat.Presentation
                 enemyTeamDefinitions = new List<CuidDefinition> { tideToad, emberFox };
             }
         }
+
+        private void HandleHudCombatantHoverStarted(string combatantId)
+        {
+            _hudHoveredCombatantId = combatantId ?? string.Empty;
+            RefreshHoverTooltipIfNeeded();
+        }
+
+        private void HandleHudCombatantHoverEnded(string combatantId)
+        {
+            if (_hudHoveredCombatantId == combatantId)
+            {
+                _hudHoveredCombatantId = string.Empty;
+                RefreshHoverTooltipIfNeeded();
+            }
+        }
+
+        private void UpdateWorldHoveredCombatantId()
+        {
+            bool isPointerOverTooltip = hudController != null && hudController.IsPointerOverHoverTooltip();
+            if (isPointerOverTooltip && !string.IsNullOrWhiteSpace(_hoveredCombatantId))
+            {
+                // Keep world hover stable while cursor is on the tooltip opened from a world Cuid.
+                _worldHoveredCombatantId = _hoveredCombatantId;
+                return;
+            }
+
+            if (!TryGetClickedCombatant(out CombatantState combatant) || combatant == null || combatant.IsDefeated)
+            {
+                _worldHoveredCombatantId = string.Empty;
+                return;
+            }
+
+            _worldHoveredCombatantId = combatant.CombatantId;
+        }
+
+        private void ShowCombatantHover(string combatantId)
+        {
+            if (string.IsNullOrWhiteSpace(combatantId) || hudController == null || _turnController?.BattleState == null)
+            {
+                return;
+            }
+
+            CombatantState combatant = _turnController.BattleState.FindCombatant(combatantId);
+            if (combatant == null)
+            {
+                return;
+            }
+
+            _hoveredCombatantId = combatantId;
+            string title = $"{combatant.Unit.DisplayName} ({combatant.Team})";
+            string statsText = BuildHoverStatsText(combatant);
+            string effectsText = BuildHoverEffectsText(combatant);
+            bool opportunityReady = !_spentOpportunityCombatants.Contains(combatant.CombatantId);
+            effectsText = $"Opportunity: {(opportunityReady ? "Ready" : "Spent")}\n{effectsText}";
+
+            if (TryGetHoverScreenPoint(combatant, out Vector2 screenPoint))
+            {
+                hudController.ShowHoverTooltip(title, statsText, effectsText, screenPoint);
+            }
+            else
+            {
+                hudController.ShowHoverTooltip(title, statsText, effectsText);
+            }
+        }
+
+        private void RefreshHoverTooltipIfNeeded()
+        {
+            string targetCombatantId = !string.IsNullOrWhiteSpace(_hudHoveredCombatantId)
+                ? _hudHoveredCombatantId
+                : _worldHoveredCombatantId;
+
+            if (string.IsNullOrWhiteSpace(targetCombatantId))
+            {
+                _hoveredCombatantId = string.Empty;
+                hudController?.HideHoverTooltip();
+                return;
+            }
+
+            if (_turnController?.BattleState == null)
+            {
+                _hoveredCombatantId = string.Empty;
+                hudController?.HideHoverTooltip();
+                return;
+            }
+
+            CombatantState hovered = _turnController.BattleState.FindCombatant(targetCombatantId);
+            if (hovered == null)
+            {
+                _hoveredCombatantId = string.Empty;
+                hudController?.HideHoverTooltip();
+                return;
+            }
+
+            ShowCombatantHover(targetCombatantId);
+
+            if (TryGetHoverScreenPoint(hovered, out Vector2 screenPoint))
+            {
+                hudController?.SetHoverTooltipScreenPoint(screenPoint);
+            }
+        }
+
+        private bool TryGetHoverScreenPoint(CombatantState combatant, out Vector2 screenPoint)
+        {
+            screenPoint = default;
+            if (combatant == null)
+            {
+                return false;
+            }
+
+            Camera cam = GetInputCamera();
+            if (cam == null)
+            {
+                return false;
+            }
+
+            Vector3 worldPosition;
+            if (_views.TryGetValue(combatant.CombatantId, out CuidView view) && view != null)
+            {
+                worldPosition = view.transform.position + Vector3.up * hoverWorldYOffset;
+            }
+            else
+            {
+                worldPosition = gridController.GridToWorld(combatant.Position) + Vector3.up * hoverWorldYOffset;
+            }
+
+            Vector3 projected = cam.WorldToScreenPoint(worldPosition);
+            if (projected.z <= 0f)
+            {
+                return false;
+            }
+
+            screenPoint = new Vector2(projected.x, projected.y);
+            return true;
+        }
+
+        private string BuildHoverStatsText(CombatantState combatant)
+        {
+            CuidStats baseStats = combatant.Unit != null && combatant.Unit.Stats != null
+                ? combatant.Unit.Stats
+                : new CuidStats();
+            CuidStats effective = combatant.GetEffectiveStats();
+
+            var sb = new StringBuilder(256);
+            sb.AppendLine($"HP {Mathf.Max(0, combatant.CurrentHealth)}/{combatant.GetMaxHealth()}");
+            AppendStatLine(sb, "ATK", baseStats.Attack, effective.Attack);
+            AppendStatLine(sb, "DEF", baseStats.Defense, effective.Defense);
+            AppendStatLine(sb, "A.EFF", baseStats.AbilityEffectiveness, effective.AbilityEffectiveness);
+            AppendStatLine(sb, "A.RES", baseStats.AbilityResistance, effective.AbilityResistance);
+            AppendStatLine(sb, "SPD", baseStats.Speed, effective.Speed);
+            AppendStatLine(sb, "DMG", baseStats.Damage, effective.Damage);
+            AppendStatLine(sb, "DMG RED", baseStats.DamageReduction, effective.DamageReduction);
+            AppendStatLine(sb, "A.DMG", baseStats.AbilityDamage, effective.AbilityDamage);
+            AppendStatLine(sb, "A.RED", baseStats.AbilityReduction, effective.AbilityReduction);
+            bool opportunityReady = !_spentOpportunityCombatants.Contains(combatant.CombatantId);
+            sb.AppendLine($"Opportunity {(opportunityReady ? "Ready" : "Spent")}");
+            return sb.ToString().TrimEnd();
+        }
+
+        private static void AppendStatLine(StringBuilder sb, string label, int baseValue, int effectiveValue)
+        {
+            if (baseValue == effectiveValue)
+            {
+                sb.AppendLine($"{label} {effectiveValue}");
+                return;
+            }
+
+            sb.AppendLine($"{label} {effectiveValue} ({baseValue:+#;-#;0})");
+        }
+
+        private static string BuildHoverEffectsText(CombatantState combatant)
+        {
+            if (combatant.ActiveEffects == null || combatant.ActiveEffects.Count == 0)
+            {
+                return "Effects: None";
+            }
+
+            var sb = new StringBuilder(256);
+            sb.AppendLine("Effects:");
+            for (int i = 0; i < combatant.ActiveEffects.Count; i++)
+            {
+                ActiveStatusEffect effect = combatant.ActiveEffects[i];
+                if (effect == null || effect.RemainingTurns <= 0)
+                {
+                    continue;
+                }
+
+                sb.AppendLine($"- {FormatEffectLabel(effect)}");
+            }
+
+            string summary = sb.ToString().TrimEnd();
+            return summary == "Effects:" ? "Effects: None" : summary;
+        }
+
+        private static string FormatEffectLabel(ActiveStatusEffect effect)
+        {
+            switch (effect.Kind)
+            {
+                case SupportEffectKind.StatModifier:
+                    return $"{effect.TargetStat} {(effect.Magnitude >= 0 ? "+" : string.Empty)}{effect.Magnitude} ({effect.RemainingTurns}t)";
+                case SupportEffectKind.FlatDamageReduction:
+                    return $"Flat DR +{effect.Magnitude} ({effect.RemainingTurns}t)";
+                case SupportEffectKind.FlatDamageIncrease:
+                    return $"Flat DMG +{effect.Magnitude} ({effect.RemainingTurns}t)";
+                case SupportEffectKind.Shield:
+                    return $"Shield {effect.Magnitude} ({effect.RemainingTurns}t)";
+                case SupportEffectKind.Thorns:
+                    return $"Thorns {effect.Magnitude} ({effect.RemainingTurns}t)";
+                case SupportEffectKind.Heal:
+                default:
+                    return $"{effect.Kind} {effect.Magnitude} ({effect.RemainingTurns}t)";
+            }
+        }
+
     }
 }
