@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using MidnightFamiliar.Combat.Content;
 using MidnightFamiliar.Combat.Models;
 using MidnightFamiliar.Combat.Systems;
-using UnityEngine;
 
 namespace MidnightFamiliar.Combat.Presentation
 {
@@ -11,11 +10,7 @@ namespace MidnightFamiliar.Combat.Presentation
     {
         private CombatantState FindClosestOpponent(CombatantState actor)
         {
-            TeamSide opponentSide = actor.Team == TeamSide.Player ? TeamSide.Enemy : TeamSide.Player;
-            return _turnController.BattleState.Combatants
-                .Where(c => c.Team == opponentSide && !c.IsDefeated)
-                .OrderBy(c => c.Position.ManhattanDistanceTo(actor.Position))
-                .FirstOrDefault();
+            return _spatialQueryService.FindClosestOpponent(_turnController.BattleState, actor);
         }
 
         private TurnChoice BuildEnemyChoice(CombatantState actor, CombatantState defaultTarget)
@@ -88,8 +83,12 @@ namespace MidnightFamiliar.Combat.Presentation
 
         private bool IsTargetInRange(CombatantState actor, CombatantState target, CuidAction action)
         {
-            int distance = actor.Position.ManhattanDistanceTo(target.Position);
-            return distance <= Mathf.Max(0, action.Range);
+            if (actor == null || target == null || action == null)
+            {
+                return false;
+            }
+
+            return _spatialQueryService.IsTargetInRange(actor.Position, target.Position, action.Range);
         }
 
         private TeamRoster BuildTeam(TeamSide side, List<CuidDefinition> definitions)

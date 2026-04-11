@@ -207,37 +207,24 @@ namespace MidnightFamiliar.Combat.Presentation
         private void BuildValidMoveCells(CombatantState actor)
         {
             _validMoveCells.Clear();
+            BattleState state = _turnController != null ? _turnController.BattleState : null;
+            if (actor == null || state == null)
+            {
+                return;
+            }
+
             int range = _remainingMovement;
             if (range <= 0)
             {
                 return;
             }
 
-            GridPosition start = actor.Position;
-
-            for (int x = 0; x < gridController.GridWidth; x++)
-            {
-                for (int y = 0; y < gridController.GridHeight; y++)
-                {
-                    var candidate = new GridPosition(x, y);
-                    if (candidate.X == start.X && candidate.Y == start.Y)
-                    {
-                        continue;
-                    }
-
-                    if (start.ManhattanDistanceTo(candidate) > range)
-                    {
-                        continue;
-                    }
-
-                    if (IsOccupied(candidate, actor.CombatantId))
-                    {
-                        continue;
-                    }
-
-                    _validMoveCells.Add(candidate);
-                }
-            }
+            _movementService.CollectReachableCells(
+                state,
+                actor.Position,
+                range,
+                actor.CombatantId,
+                _validMoveCells);
         }
 
         private int GetMoveRange(CombatantState actor)
@@ -247,8 +234,7 @@ namespace MidnightFamiliar.Combat.Presentation
                 return 0;
             }
 
-            int speed = actor != null ? actor.GetEffectiveStats().Speed : 1;
-            return Mathf.Clamp(Mathf.Max(1, speed / 4), 1, 3);
+            return _movementService.GetMovementBudget(actor);
         }
 
         private IEnumerator MoveActorTowardTarget(CombatantState actor, CombatantState target)
@@ -288,74 +274,25 @@ namespace MidnightFamiliar.Combat.Presentation
 
         private GridPosition CalculateMoveDestination(CombatantState actor, CombatantState target)
         {
+            BattleState state = _turnController != null ? _turnController.BattleState : null;
+            if (actor == null || target == null || state == null)
+            {
+                return actor != null ? actor.Position : default;
+            }
+
             int steps = GetMoveRange(actor);
-            GridPosition current = actor.Position;
-
-            for (int i = 0; i < steps; i++)
-            {
-                GridPosition next = FindBestNeighborStep(current, target.Position, actor.CombatantId);
-                if (next.X == current.X && next.Y == current.Y)
-                {
-                    break;
-                }
-
-                current = next;
-            }
-
-            return current;
-        }
-
-        private GridPosition FindBestNeighborStep(GridPosition from, GridPosition target, string actorId)
-        {
-            GridPosition[] candidates =
-            {
-                new GridPosition(from.X + 1, from.Y),
-                new GridPosition(from.X - 1, from.Y),
-                new GridPosition(from.X, from.Y + 1),
-                new GridPosition(from.X, from.Y - 1)
-            };
-
-            int bestDistance = from.ManhattanDistanceTo(target);
-            GridPosition best = from;
-            foreach (GridPosition candidate in candidates)
-            {
-                if (!gridController.IsInside(candidate))
-                {
-                    continue;
-                }
-
-                if (IsOccupied(candidate, actorId))
-                {
-                    continue;
-                }
-
-                int distance = candidate.ManhattanDistanceTo(target);
-                if (distance < bestDistance)
-                {
-                    bestDistance = distance;
-                    best = candidate;
-                }
-            }
-
-            return best;
+            return _movementService.CalculateMoveDestinationToward(
+                state,
+                actor.Position,
+                target.Position,
+                steps,
+                actor.CombatantId);
         }
 
         private bool IsOccupied(GridPosition position, string exceptCombatantId)
         {
-            foreach (CombatantState combatant in _turnController.BattleState.Combatants)
-            {
-                if (combatant.IsDefeated || combatant.CombatantId == exceptCombatantId)
-                {
-                    continue;
-                }
-
-                if (combatant.Position.X == position.X && combatant.Position.Y == position.Y)
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            BattleState state = _turnController != null ? _turnController.BattleState : null;
+            return _movementService.IsOccupied(state, position, exceptCombatantId);
         }
     }
 }

@@ -85,7 +85,8 @@ namespace MidnightFamiliar.Combat.Presentation
         private List<GridPosition> BuildActionRangeCells(CombatantState actor, CuidAction action)
         {
             var cells = new List<GridPosition>();
-            if (actor == null || action == null)
+            BattleState state = _turnController != null ? _turnController.BattleState : null;
+            if (actor == null || action == null || state == null)
             {
                 return cells;
             }
@@ -96,19 +97,7 @@ namespace MidnightFamiliar.Combat.Presentation
                 return cells;
             }
 
-            int range = Mathf.Max(0, action.Range);
-            for (int x = 0; x < gridController.GridWidth; x++)
-            {
-                for (int y = 0; y < gridController.GridHeight; y++)
-                {
-                    GridPosition cell = new GridPosition(x, y);
-                    int distance = actor.Position.ManhattanDistanceTo(cell);
-                    if (distance <= range)
-                    {
-                        cells.Add(cell);
-                    }
-                }
-            }
+            _spatialQueryService.CollectCellsInRange(state, actor.Position, action.Range, cells);
 
             return cells;
         }

@@ -22,10 +22,12 @@ namespace MidnightFamiliar.Combat.Systems
     public sealed class TypeStatusProcessor
     {
         private readonly IDiceRoller _diceRoller;
+        private readonly ICombatMovementService _movementService;
 
-        public TypeStatusProcessor(IDiceRoller diceRoller)
+        public TypeStatusProcessor(IDiceRoller diceRoller, ICombatMovementService movementService = null)
         {
             _diceRoller = diceRoller ?? throw new ArgumentNullException(nameof(diceRoller));
+            _movementService = movementService ?? new CombatMovementService();
         }
 
         public bool TryHandlePreActionFailure(CombatantState actor, out string message)
@@ -176,7 +178,7 @@ namespace MidnightFamiliar.Combat.Systems
             string movementMessage = string.Empty;
             if (actor.HasStatus(TypeStatusId.Frightened))
             {
-                int movedSteps = SpendMovementFleeing(actor, state);
+                int movedSteps = _movementService.SpendMovementFleeing(actor, state);
                 if (movedSteps > 0)
                 {
                     movementMessage = $"{actorName} is frightened and flees {movedSteps} step(s).";
@@ -268,119 +270,6 @@ namespace MidnightFamiliar.Combat.Systems
             int before = target.CurrentHealth;
             target.CurrentHealth = before - Mathf.Max(0, damage);
             return Mathf.Max(0, before - target.CurrentHealth);
-        }
-
-        private static int GetMovementBudget(CombatantState actor)
-        {
-            int speed = actor != null ? actor.GetEffectiveStats().Speed : 1;
-            return Mathf.Clamp(Mathf.Max(1, speed / 4), 1, 3);
-        }
-
-        private static int SpendMovementFleeing(CombatantState actor, BattleState state)
-        {
-            int budget = GetMovementBudget(actor);
-            if (budget <= 0)
-            {
-                return 0;
-            }
-
-            int moved = 0;
-            for (int step = 0; step < budget; step++)
-            {
-                GridPosition from = actor.Position;
-                GridPosition to = FindFleeStep(actor, state, from);
-                if (to.X == from.X && to.Y == from.Y)
-                {
-                    break;
-                }
-
-                actor.Position = to;
-                moved++;
-            }
-
-            return moved;
-        }
-
-        private static GridPosition FindFleeStep(CombatantState actor, BattleState state, GridPosition from)
-        {
-            GridPosition[] candidates =
-            {
-                new GridPosition(from.X + 1, from.Y),
-                new GridPosition(from.X - 1, from.Y),
-                new GridPosition(from.X, from.Y + 1),
-                new GridPosition(from.X, from.Y - 1)
-            };
-
-            int currentScore = GetNearestOpponentDistance(actor, state, from);
-            int bestScore = currentScore;
-            GridPosition best = from;
-            for (int i = 0; i < candidates.Length; i++)
-            {
-                GridPosition candidate = candidates[i];
-                if (!state.IsInsideGrid(candidate) || IsOccupied(state, candidate, actor.CombatantId))
-                {
-                    continue;
-                }
-
-                int score = GetNearestOpponentDistance(actor, state, candidate);
-                if (score > bestScore)
-                {
-                    bestScore = score;
-                    best = candidate;
-                }
-            }
-
-            return best;
-        }
-
-        private static int GetNearestOpponentDistance(CombatantState actor, BattleState state, GridPosition position)
-        {
-            if (state == null || state.Combatants == null)
-            {
-                return 0;
-            }
-
-            int best = int.MaxValue;
-            for (int i = 0; i < state.Combatants.Count; i++)
-            {
-                CombatantState other = state.Combatants[i];
-                if (other == null || other.IsDefeated || other.Team == actor.Team)
-                {
-                    continue;
-                }
-
-                int distance = other.Position.ManhattanDistanceTo(position);
-                if (distance < best)
-                {
-                    best = distance;
-                }
-            }
-
-            return best == int.MaxValue ? 0 : best;
-        }
-
-        private static bool IsOccupied(BattleState state, GridPosition position, string exceptCombatantId)
-        {
-            if (state == null || state.Combatants == null)
-            {
-                return false;
-            }
-
-            for (int i = 0; i < state.Combatants.Count; i++)
-            {
-                CombatantState combatant = state.Combatants[i];
-                if (combatant == null || combatant.IsDefeated || combatant.CombatantId == exceptCombatantId)
-                {
-                    continue;
-                }
-
-                if (combatant.Position.X == position.X && combatant.Position.Y == position.Y)
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
     }
 }

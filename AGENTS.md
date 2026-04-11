@@ -25,6 +25,11 @@ Prioritize clarity and maintainability over cleverness.
 - Avoid monolithic scripts: when a class starts accumulating multiple responsibilities, split it into focused files.
 - For large Unity controllers, prefer partial-class file splits by concern (for example `*.Input.cs`, `*.UI.cs`, `*.Opportunity.cs`) before adding new systems.
 - Keep one clear responsibility per file whenever practical, even if the runtime type remains the same.
+- Prefer orchestration/execution separation:
+  orchestrator classes decide **when/why** behavior runs, while reusable services/helpers own **how** behavior is executed.
+  Example: status systems decide when fear triggers; movement services execute flee/pathing calculations.
+- If a feature starts requiring grid/pathing/math logic that could be reused by other mechanics, extract it into a shared service instead of embedding it in status/UI/controller files.
+- File-size guidance: keep gameplay controllers/presentation files small (aim around 500 lines max), but this limit does **not** apply to shared helper/service files when keeping related reusable logic together improves cohesion and reduces duplication elsewhere.
 
 ## Testing Expectations
 - When adding or modifying behavior that is unit-testable, add new unit tests or update existing tests in the same change.

@@ -68,33 +68,12 @@ namespace MidnightFamiliar.Combat.Presentation
 
         private List<CombatantState> GetThreatenersOnMoveAway(CombatantState mover, GridPosition from, GridPosition to)
         {
-            var threateners = new List<CombatantState>(3);
-            if (_turnController?.BattleState?.Combatants == null)
+            if (_turnController?.BattleState == null)
             {
-                return threateners;
+                return new List<CombatantState>(0);
             }
 
-            for (int i = 0; i < _turnController.BattleState.Combatants.Count; i++)
-            {
-                CombatantState candidate = _turnController.BattleState.Combatants[i];
-                if (candidate == null ||
-                    candidate.IsDefeated ||
-                    candidate.CombatantId == mover.CombatantId ||
-                    candidate.Team == mover.Team)
-                {
-                    continue;
-                }
-
-                int fromDistance = candidate.Position.ManhattanDistanceTo(from);
-                int toDistance = candidate.Position.ManhattanDistanceTo(to);
-                if (fromDistance <= 1 && toDistance > 1)
-                {
-                    threateners.Add(candidate);
-                }
-            }
-
-            threateners.Sort((a, b) => string.CompareOrdinal(a.CombatantId, b.CombatantId));
-            return threateners;
+            return _spatialQueryService.GetThreatenersOnMoveAway(_turnController.BattleState, mover, from, to);
         }
 
         private List<CuidAction> GetAvailableOpportunityActions(CombatantState attacker)
@@ -265,75 +244,26 @@ namespace MidnightFamiliar.Combat.Presentation
 
         private bool IsAdjacentToAnyOpponent(CombatantState actor)
         {
-            if (_turnController?.BattleState?.Combatants == null || actor == null)
+            if (_turnController?.BattleState == null || actor == null)
             {
                 return false;
             }
 
-            return _turnController.BattleState.Combatants.Any(other =>
-                other != null &&
-                !other.IsDefeated &&
-                other.Team != actor.Team &&
-                other.Position.ManhattanDistanceTo(actor.Position) <= 1);
+            return _spatialQueryService.IsAdjacentToAnyOpponent(_turnController.BattleState, actor);
         }
 
         private GridPosition FindDisengageDestination(CombatantState actor)
         {
-            GridPosition from = actor.Position;
-            GridPosition[] candidates =
+            if (actor == null || _turnController?.BattleState == null)
             {
-                new GridPosition(from.X + 1, from.Y),
-                new GridPosition(from.X - 1, from.Y),
-                new GridPosition(from.X, from.Y + 1),
-                new GridPosition(from.X, from.Y - 1)
-            };
-
-            int currentScore = GetNearestOpponentDistance(actor.Team, from);
-            int bestScore = currentScore;
-            GridPosition best = from;
-            for (int i = 0; i < candidates.Length; i++)
-            {
-                GridPosition candidate = candidates[i];
-                if (!gridController.IsInside(candidate) || IsOccupied(candidate, actor.CombatantId))
-                {
-                    continue;
-                }
-
-                int score = GetNearestOpponentDistance(actor.Team, candidate);
-                if (score > bestScore)
-                {
-                    bestScore = score;
-                    best = candidate;
-                }
+                return actor != null ? actor.Position : default;
             }
 
-            return best;
-        }
-
-        private int GetNearestOpponentDistance(TeamSide team, GridPosition position)
-        {
-            if (_turnController?.BattleState?.Combatants == null)
-            {
-                return 0;
-            }
-
-            int best = int.MaxValue;
-            for (int i = 0; i < _turnController.BattleState.Combatants.Count; i++)
-            {
-                CombatantState other = _turnController.BattleState.Combatants[i];
-                if (other == null || other.IsDefeated || other.Team == team)
-                {
-                    continue;
-                }
-
-                int distance = other.Position.ManhattanDistanceTo(position);
-                if (distance < best)
-                {
-                    best = distance;
-                }
-            }
-
-            return best == int.MaxValue ? 0 : best;
+            return _movementService.FindBestFleeStep(
+                _turnController.BattleState,
+                actor.Team,
+                actor.Position,
+                actor.CombatantId);
         }
 
         private void EnsureOpportunityPanelReference()

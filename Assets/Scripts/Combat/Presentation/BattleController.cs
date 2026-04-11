@@ -65,6 +65,8 @@ namespace MidnightFamiliar.Combat.Presentation
         private readonly List<GameObject> _moveMarkers = new List<GameObject>();
         private readonly List<GameObject> _actionMarkers = new List<GameObject>();
         private readonly CombatResolver _opportunityResolver = new CombatResolver();
+        private readonly ICombatMovementService _movementService = new CombatMovementService();
+        private readonly ICombatSpatialQueryService _spatialQueryService = new CombatSpatialQueryService();
         private readonly List<CuidAction> _pendingOpportunityActions = new List<CuidAction>(3);
         private readonly HashSet<string> _spentOpportunityCombatants = new HashSet<string>();
 
