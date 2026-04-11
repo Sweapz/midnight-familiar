@@ -23,11 +23,106 @@ namespace MidnightFamiliar.Combat.Systems
         float GetMultiplier(CuidType actionType, CuidUnit target);
     }
 
+    public interface ITypeStatusRuleProvider
+    {
+        IReadOnlyList<TypeStatusApplication> GetOnHitApplications(CuidType actionType);
+    }
+
     public sealed class NeutralTypeEffectivenessProvider : ITypeEffectivenessProvider
     {
         public float GetMultiplier(CuidType actionType, CuidUnit target)
         {
             return 1f;
+        }
+    }
+
+    public sealed class TypeStatusRuleProvider : ITypeStatusRuleProvider
+    {
+        public const int BuildUpStatusDuration = 2;
+        private static readonly IReadOnlyList<TypeStatusApplication> EmptyApplications = new List<TypeStatusApplication>(0);
+        private readonly Dictionary<CuidType, List<TypeStatusApplication>> _rules = BuildRules();
+
+        public IReadOnlyList<TypeStatusApplication> GetOnHitApplications(CuidType actionType)
+        {
+            if (_rules.TryGetValue(actionType, out List<TypeStatusApplication> applications))
+            {
+                return applications;
+            }
+
+            return EmptyApplications;
+        }
+
+        private static Dictionary<CuidType, List<TypeStatusApplication>> BuildRules()
+        {
+            return new Dictionary<CuidType, List<TypeStatusApplication>>
+            {
+                [CuidType.Tide] = new List<TypeStatusApplication>
+                {
+                    new TypeStatusApplication
+                    {
+                        Kind = TypeStatusApplicationKind.ApplyOrRefresh,
+                        Status = TypeStatusId.Drenched,
+                        DurationTurns = 1
+                    }
+                },
+                [CuidType.Volt] = new List<TypeStatusApplication>
+                {
+                    new TypeStatusApplication
+                    {
+                        Kind = TypeStatusApplicationKind.Upgrade,
+                        UpgradeFrom = TypeStatusId.Electrified,
+                        UpgradeTo = TypeStatusId.Paralyzed,
+                        DurationTurns = 1
+                    },
+                    new TypeStatusApplication
+                    {
+                        Kind = TypeStatusApplicationKind.ApplyOrRefresh,
+                        Status = TypeStatusId.Electrified,
+                        DurationTurns = BuildUpStatusDuration
+                    }
+                },
+                [CuidType.Flora] = new List<TypeStatusApplication>
+                {
+                    new TypeStatusApplication
+                    {
+                        Kind = TypeStatusApplicationKind.Upgrade,
+                        UpgradeFrom = TypeStatusId.Vined,
+                        UpgradeTo = TypeStatusId.Rooted,
+                        DurationTurns = 2
+                    },
+                    new TypeStatusApplication
+                    {
+                        Kind = TypeStatusApplicationKind.ApplyOrRefresh,
+                        Status = TypeStatusId.Vined,
+                        DurationTurns = BuildUpStatusDuration
+                    }
+                },
+                [CuidType.Beast] = new List<TypeStatusApplication>
+                {
+                    new TypeStatusApplication
+                    {
+                        Kind = TypeStatusApplicationKind.ApplyOrRefresh,
+                        Status = TypeStatusId.Debilitated,
+                        DurationTurns = 2
+                    }
+                },
+                [CuidType.Ember] = new List<TypeStatusApplication>
+                {
+                    new TypeStatusApplication
+                    {
+                        Kind = TypeStatusApplicationKind.Upgrade,
+                        UpgradeFrom = TypeStatusId.Burned,
+                        UpgradeTo = TypeStatusId.Aflame,
+                        DurationTurns = 2
+                    },
+                    new TypeStatusApplication
+                    {
+                        Kind = TypeStatusApplicationKind.ApplyOrRefresh,
+                        Status = TypeStatusId.Burned,
+                        DurationTurns = BuildUpStatusDuration
+                    }
+                },
+            };
         }
     }
 
@@ -56,13 +151,18 @@ namespace MidnightFamiliar.Combat.Systems
         private const int BaseDefenseTarget = 10;
         private readonly IDiceRoller _diceRoller;
         private readonly ITypeEffectivenessProvider _typeEffectiveness;
+        private readonly ITypeStatusRuleProvider _typeStatusRules;
+        private readonly TypeStatusProcessor _statusProcessor;
 
         public CombatResolver(
             IDiceRoller diceRoller = null,
-            ITypeEffectivenessProvider typeEffectiveness = null)
+            ITypeEffectivenessProvider typeEffectiveness = null,
+            ITypeStatusRuleProvider typeStatusRules = null)
         {
             _diceRoller = diceRoller ?? new UnityDiceRoller();
             _typeEffectiveness = typeEffectiveness ?? new TypeChartEffectivenessProvider();
+            _typeStatusRules = typeStatusRules ?? new TypeStatusRuleProvider();
+            _statusProcessor = new TypeStatusProcessor(_diceRoller);
         }
 
         public ActionResolution ResolveAction(CombatantState actor, CombatantState target, CuidAction action)
@@ -74,6 +174,17 @@ namespace MidnightFamiliar.Combat.Systems
             if (target.Unit == null) throw new ArgumentException("Target must have a unit.", nameof(target));
             if (actor.Unit.Stats == null) throw new ArgumentException("Actor unit must have stats.", nameof(actor));
             if (target.Unit.Stats == null) throw new ArgumentException("Target unit must have stats.", nameof(target));
+
+            if (_statusProcessor.TryHandlePreActionFailure(actor, out string preActionFailureMessage))
+            {
+                ActionResolution failed = BuildBaseResult(actor, target, action);
+                failed.Kind = action.Kind;
+                failed.AbilityIntent = action.AbilityIntent;
+                failed.Succeeded = false;
+                failed.WasResisted = false;
+                failed.Summary = preActionFailureMessage;
+                return failed;
+            }
 
             switch (action.Kind)
             {
@@ -117,22 +228,37 @@ namespace MidnightFamiliar.Combat.Systems
             var rawDamage = Mathf.Max(0, action.Potency + actorStats.Damage);
             result.TypeMultiplier = _typeEffectiveness.GetMultiplier(action.ActionType, target.Unit);
             var scaledDamage = Mathf.RoundToInt(rawDamage * result.TypeMultiplier);
-            var adjustedDamage = scaledDamage + actor.GetBonusFlatDamageIncrease();
+            float outgoingMultiplier = _statusProcessor.ComputeOutgoingDamageMultiplier(actor);
+            var adjustedDamage = Mathf.RoundToInt((scaledDamage + actor.GetBonusFlatDamageIncrease()) * outgoingMultiplier);
             var reducedDamage = adjustedDamage - targetStats.DamageReduction - target.GetBonusFlatDamageReduction();
             var finalDamage = Mathf.Max(1, reducedDamage);
 
-            result.AppliedMagnitude = ApplyDamageWithMitigation(actor, target, finalDamage, out int shieldAbsorbed);
+            int directHealthDamage = ApplyDamageWithMitigation(actor, target, finalDamage, out int shieldAbsorbed);
+            result.AppliedMagnitude = directHealthDamage;
+            int jaggedExtra = _statusProcessor.ComputeIncomingOnHitExtraDamage(actor, target, isStatusDamageEvent: false);
+            int jaggedApplied = 0;
+            if (jaggedExtra > 0 && !target.IsDefeated)
+            {
+                jaggedApplied = ApplyDamage(target, jaggedExtra);
+                result.AppliedMagnitude += jaggedApplied;
+            }
+
             result.TargetHealthAfter = target.CurrentHealth;
             result.DamageBreakdown = BuildDamageBreakdown(
                 action.Potency,
                 actorStats.Damage,
                 result.TypeMultiplier,
                 actor.GetBonusFlatDamageIncrease(),
+                outgoingMultiplier,
+                false,
                 targetStats.DamageReduction,
                 target.GetBonusFlatDamageReduction(),
-                finalDamage,
                 shieldAbsorbed,
-                result.AppliedMagnitude);
+                directHealthDamage,
+                jaggedApplied);
+
+            IReadOnlyList<TypeStatusApplication> defaults = _typeStatusRules.GetOnHitApplications(action.ActionType);
+            _statusProcessor.ApplyOnSuccessfulOffense(actor, target, action, defaults);
             result.Summary = $"{actor.Unit.DisplayName} hit {target.Unit.DisplayName} with {action.DisplayName} for {result.AppliedMagnitude} damage.";
             return result;
         }
@@ -150,6 +276,9 @@ namespace MidnightFamiliar.Combat.Systems
                     break;
                 case AbilityIntent.Supportive:
                     ResolveSupportiveAbility(actor, target, action, result);
+                    break;
+                case AbilityIntent.Debuff:
+                    ResolveDebuffAbility(actor, target, action, result);
                     break;
                 default:
                     throw new NotSupportedException(
@@ -183,11 +312,26 @@ namespace MidnightFamiliar.Combat.Systems
                 action.Potency + actorStats.AbilityDamage);
             result.TypeMultiplier = _typeEffectiveness.GetMultiplier(action.ActionType, target.Unit);
             var scaledMagnitude = Mathf.RoundToInt(rawMagnitude * result.TypeMultiplier);
-            var adjustedMagnitude = scaledMagnitude + actor.GetBonusFlatDamageIncrease();
+            float outgoingMultiplier = _statusProcessor.ComputeOutgoingDamageMultiplier(actor);
+            var adjustedMagnitude = Mathf.RoundToInt((scaledMagnitude + actor.GetBonusFlatDamageIncrease()) * outgoingMultiplier);
             var reducedMagnitude = adjustedMagnitude - targetStats.AbilityReduction - target.GetBonusFlatDamageReduction();
-            var finalDamage = Mathf.Max(1, reducedMagnitude);
+            int finalDamage = Mathf.Max(1, reducedMagnitude);
+            if (target.HasStatus(TypeStatusId.Drenched))
+            {
+                finalDamage = Mathf.Max(1, Mathf.RoundToInt(finalDamage * 1.1f));
+            }
 
-            result.AppliedMagnitude = ApplyDamageWithMitigation(actor, target, finalDamage, out int shieldAbsorbed);
+            bool drenchedBoostApplied = target.HasStatus(TypeStatusId.Drenched);
+            int directHealthDamage = ApplyDamageWithMitigation(actor, target, finalDamage, out int shieldAbsorbed);
+            result.AppliedMagnitude = directHealthDamage;
+            int jaggedExtra = _statusProcessor.ComputeIncomingOnHitExtraDamage(actor, target, isStatusDamageEvent: false);
+            int jaggedApplied = 0;
+            if (jaggedExtra > 0 && !target.IsDefeated)
+            {
+                jaggedApplied = ApplyDamage(target, jaggedExtra);
+                result.AppliedMagnitude += jaggedApplied;
+            }
+
             result.TargetHealthAfter = target.CurrentHealth;
             int abilityStatContribution = actorStats.AbilityDamage;
             result.DamageBreakdown = BuildDamageBreakdown(
@@ -195,11 +339,16 @@ namespace MidnightFamiliar.Combat.Systems
                 abilityStatContribution,
                 result.TypeMultiplier,
                 actor.GetBonusFlatDamageIncrease(),
+                outgoingMultiplier,
+                drenchedBoostApplied,
                 targetStats.AbilityReduction,
                 target.GetBonusFlatDamageReduction(),
-                finalDamage,
                 shieldAbsorbed,
-                result.AppliedMagnitude);
+                directHealthDamage,
+                jaggedApplied);
+
+            IReadOnlyList<TypeStatusApplication> defaults = _typeStatusRules.GetOnHitApplications(action.ActionType);
+            _statusProcessor.ApplyOnSuccessfulOffense(actor, target, action, defaults);
             result.Summary = $"{actor.Unit.DisplayName} used {action.DisplayName} for {result.AppliedMagnitude} ability damage.";
         }
 
@@ -210,37 +359,80 @@ namespace MidnightFamiliar.Combat.Systems
             ActionResolution result)
         {
             CuidStats actorStats = actor.GetEffectiveStats();
-            CuidStats targetStats = target.GetEffectiveStats();
             var isFriendlyTarget = actor.Team == target.Team;
-            if (isFriendlyTarget)
+
+            if (!isFriendlyTarget)
             {
                 result.AttackRoll = 0;
                 result.DefenseRoll = 0;
-                result.Succeeded = true;
-                result.WasResisted = false;
-            }
-            else
-            {
-                result.AttackRoll = _diceRoller.RollD20() + actorStats.AbilityEffectiveness + action.HitBonus;
-                result.DefenseRoll = BaseDefenseTarget + targetStats.AbilityResistance;
-                result.Succeeded = result.AttackRoll >= result.DefenseRoll;
-                result.WasResisted = !result.Succeeded;
-            }
-
-            if (!result.Succeeded)
-            {
-                result.Summary = $"{target.Unit.DisplayName} resisted supportive effect {action.DisplayName}.";
+                result.Succeeded = false;
+                result.WasResisted = true;
+                result.Summary = $"{action.DisplayName} is supportive and can only target allies.";
                 return;
             }
 
+            result.AttackRoll = 0;
+            result.DefenseRoll = 0;
+            result.Succeeded = true;
+            result.WasResisted = false;
+
+            int appliedStatusCount = _statusProcessor.ApplyFromActionConfig(actor, target, action);
             int totalAppliedMagnitude = ApplySupportiveEffects(actor, target, action, actorStats, out string effectsSummary);
             if (totalAppliedMagnitude <= 0)
             {
-                totalAppliedMagnitude = Mathf.Max(1, action.Potency + actorStats.AbilityEffectiveness);
-                int preHeal = target.CurrentHealth;
-                target.CurrentHealth = preHeal + totalAppliedMagnitude;
-                totalAppliedMagnitude = target.CurrentHealth - preHeal;
-                effectsSummary = $"healed {target.Unit.DisplayName} for {totalAppliedMagnitude}";
+                if (appliedStatusCount > 0)
+                {
+                    effectsSummary = $"applied {appliedStatusCount} status effect(s) to {target.Unit.DisplayName}";
+                }
+                else
+                {
+                    totalAppliedMagnitude = Mathf.Max(1, action.Potency + actorStats.AbilityEffectiveness);
+                    int preHeal = target.CurrentHealth;
+                    target.CurrentHealth = preHeal + totalAppliedMagnitude;
+                    totalAppliedMagnitude = target.CurrentHealth - preHeal;
+                    effectsSummary = $"healed {target.Unit.DisplayName} for {totalAppliedMagnitude}";
+                }
+            }
+            else if (appliedStatusCount > 0)
+            {
+                effectsSummary += $", applied {appliedStatusCount} status effect(s)";
+            }
+
+            result.AppliedMagnitude = totalAppliedMagnitude;
+            result.TargetHealthAfter = target.CurrentHealth;
+            result.Summary = $"{actor.Unit.DisplayName} used {action.DisplayName}: {effectsSummary}.";
+        }
+
+        private void ResolveDebuffAbility(
+            CombatantState actor,
+            CombatantState target,
+            CuidAction action,
+            ActionResolution result)
+        {
+            CuidStats actorStats = actor.GetEffectiveStats();
+            CuidStats targetStats = target.GetEffectiveStats();
+            result.AttackRoll = _diceRoller.RollD20() + actorStats.AbilityEffectiveness + action.HitBonus;
+            result.DefenseRoll = BaseDefenseTarget + targetStats.AbilityResistance;
+            result.Succeeded = result.AttackRoll >= result.DefenseRoll;
+            result.WasResisted = !result.Succeeded;
+
+            if (!result.Succeeded)
+            {
+                result.Summary = $"{target.Unit.DisplayName} resisted debuff {action.DisplayName}.";
+                return;
+            }
+
+            int appliedStatusCount = _statusProcessor.ApplyFromActionConfig(actor, target, action);
+            int totalAppliedMagnitude = ApplySupportiveEffects(actor, target, action, actorStats, out string effectsSummary);
+            if (totalAppliedMagnitude <= 0)
+            {
+                effectsSummary = appliedStatusCount > 0
+                    ? $"applied {appliedStatusCount} status effect(s) to {target.Unit.DisplayName}"
+                    : $"had no effect on {target.Unit.DisplayName}";
+            }
+            else if (appliedStatusCount > 0)
+            {
+                effectsSummary += $", applied {appliedStatusCount} status effect(s)";
             }
 
             result.AppliedMagnitude = totalAppliedMagnitude;
@@ -404,19 +596,37 @@ namespace MidnightFamiliar.Combat.Systems
             int sourceStatBonus,
             float typeMultiplier,
             int flatIncrease,
+            float outgoingMultiplier,
+            bool drenchedBoostApplied,
             int targetReduction,
             int targetFlatReduction,
-            int reducedDamageFloorApplied,
             int shieldAbsorbed,
-            int healthDamageApplied)
+            int directHealthDamageApplied,
+            int jaggedApplied)
         {
-            int preType = Mathf.Max(0, potency + sourceStatBonus);
-            int scaled = Mathf.RoundToInt(preType * typeMultiplier);
-            int withFlatIncrease = scaled + Mathf.Max(0, flatIncrease);
+            int basePower = Mathf.Max(0, potency + sourceStatBonus);
+            int afterType = Mathf.RoundToInt(basePower * typeMultiplier);
+            int afterFlatIncrease = afterType + Mathf.Max(0, flatIncrease);
+            int afterOutgoing = Mathf.RoundToInt(afterFlatIncrease * outgoingMultiplier);
+            int afterReductions = afterOutgoing - targetReduction - targetFlatReduction;
+            int afterFloor = Mathf.Max(1, afterReductions);
+            int postDrenched = drenchedBoostApplied ? Mathf.Max(1, Mathf.RoundToInt(afterFloor * 1.1f)) : afterFloor;
+            int finalHitBeforeShield = postDrenched;
+            int totalApplied = Mathf.Max(0, directHealthDamageApplied) + Mathf.Max(0, jaggedApplied);
 
             return
-                $"Damage: ({potency} + {sourceStatBonus}) x {typeMultiplier:0.##} + {Mathf.Max(0, flatIncrease)} - {targetReduction} - {targetFlatReduction} = {reducedDamageFloorApplied}; " +
-                $"shield {shieldAbsorbed}, hp {healthDamageApplied} (scaled {scaled}, pre-scale {preType}, boosted {withFlatIncrease})";
+                $"Base power: potency {potency} + stat {sourceStatBonus} = {basePower}\n" +
+                $"Type scaling: {basePower} x {typeMultiplier:0.##} = {afterType}\n" +
+                $"Flat damage bonus: +{Mathf.Max(0, flatIncrease)} => {afterFlatIncrease}\n" +
+                $"Outgoing modifier: x{outgoingMultiplier:0.##} => {afterOutgoing}\n" +
+                (drenchedBoostApplied ? $"Drenched bonus: x1.10 => {postDrenched}\n" : string.Empty) +
+                $"Target reductions: -{targetReduction} (base), -{targetFlatReduction} (flat) => {afterReductions}\n" +
+                $"Final hit damage before shield: {finalHitBeforeShield}\n" +
+                $"Shield absorbed: {shieldAbsorbed}\n" +
+                $"Direct HP damage: {directHealthDamageApplied}\n" +
+                $"Jagged extra damage: {jaggedApplied}\n" +
+                $"Total HP damage: {totalApplied}";
         }
+
     }
 }

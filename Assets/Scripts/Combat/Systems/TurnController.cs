@@ -48,6 +48,9 @@ namespace MidnightFamiliar.Combat.Systems
     {
         private readonly IDiceRoller _diceRoller;
         private readonly CombatResolver _combatResolver;
+        private readonly TypeStatusProcessor _statusProcessor;
+        private string _turnStartProcessedCombatantId = string.Empty;
+        private int _turnStartProcessedRound = -1;
 
         public BattleState BattleState { get; private set; }
         public BattlePhase Phase { get; private set; } = BattlePhase.NotStarted;
@@ -57,6 +60,7 @@ namespace MidnightFamiliar.Combat.Systems
         {
             _diceRoller = diceRoller ?? new UnityDiceRoller();
             _combatResolver = new CombatResolver(_diceRoller, typeEffectivenessProvider);
+            _statusProcessor = new TypeStatusProcessor(_diceRoller);
         }
 
         public BattleState StartBattle(TeamRoster playerTeam, TeamRoster enemyTeam, int gridWidth = 8, int gridHeight = 8)
@@ -125,6 +129,16 @@ namespace MidnightFamiliar.Combat.Systems
             {
                 return BuildStepFailure("No current combatant is available.");
             }
+            TurnStartStatusResult turnStart = EnsureTurnStartProcessed(actor);
+            if (turnStart.ForcedSkipTurn)
+            {
+                if (advanceTurn)
+                {
+                    AdvanceTurn();
+                }
+
+                return BuildStepSuccess(turnStart.Message, null);
+            }
 
             if (choice == null || choice.IsPass)
             {
@@ -181,6 +195,16 @@ namespace MidnightFamiliar.Combat.Systems
                     break;
                 }
 
+                TurnStartStatusResult start = EnsureTurnStartProcessed(actor);
+                if (start.ForcedSkipTurn)
+                {
+                    AdvanceTurn();
+                    TurnStepResult forcedSkipStep = BuildStepSuccess(start.Message, null);
+                    result.Steps.Add(forcedSkipStep);
+                    turns++;
+                    continue;
+                }
+
                 TurnChoice choice = chooser != null
                     ? chooser(actor, BattleState)
                     : BuildDefaultChoice(actor);
@@ -203,6 +227,11 @@ namespace MidnightFamiliar.Combat.Systems
             result.FinalRoundNumber = BattleState != null ? BattleState.RoundNumber : 0;
             result.StoppedBySafetyLimit = Phase == BattlePhase.InProgress && turns >= safetyTurnLimit;
             return result;
+        }
+
+        public TurnStartStatusResult ProcessTurnStartEffects(CombatantState actor)
+        {
+            return EnsureTurnStartProcessed(actor);
         }
 
         private void AddTeam(BattleState state, TeamRoster roster, TeamSide expectedSide, int startingX)
@@ -307,7 +336,7 @@ namespace MidnightFamiliar.Combat.Systems
 
             string endingCombatantId = BattleState.TurnOrder[BattleState.CurrentTurnIndex];
             CombatantState endingCombatant = BattleState.FindCombatant(endingCombatantId);
-            endingCombatant?.TickActiveEffectsAtTurnEnd();
+            _statusProcessor.ProcessTurnEnd(endingCombatant, BattleState);
 
             BattleState.CurrentTurnIndex++;
             if (BattleState.CurrentTurnIndex >= BattleState.TurnOrder.Count)
@@ -317,6 +346,26 @@ namespace MidnightFamiliar.Combat.Systems
             }
 
             NormalizeTurnPointer();
+            _turnStartProcessedCombatantId = string.Empty;
+            _turnStartProcessedRound = -1;
+        }
+
+        private TurnStartStatusResult EnsureTurnStartProcessed(CombatantState actor)
+        {
+            if (actor == null || BattleState == null)
+            {
+                return new TurnStartStatusResult(false, false, string.Empty);
+            }
+
+            if (_turnStartProcessedCombatantId == actor.CombatantId && _turnStartProcessedRound == BattleState.RoundNumber)
+            {
+                return new TurnStartStatusResult(false, false, string.Empty);
+            }
+
+            TurnStartStatusResult result = _statusProcessor.ProcessTurnStart(actor, BattleState);
+            _turnStartProcessedCombatantId = actor.CombatantId;
+            _turnStartProcessedRound = BattleState.RoundNumber;
+            return result;
         }
 
         private bool TryResolveBattleEnd(out TeamSide? winner)

@@ -19,7 +19,7 @@ namespace MidnightFamiliar.Combat.Systems
 
         public float GetMultiplier(CuidType actionType, CuidUnit target)
         {
-            if (actionType == CuidType.None || target == null)
+            if (target == null)
             {
                 return 1f;
             }
@@ -46,7 +46,8 @@ namespace MidnightFamiliar.Combat.Systems
 
         private float GetSingleTypeMultiplier(CuidType actionType, CuidType targetType)
         {
-            if (targetType == CuidType.None)
+            if (!System.Enum.IsDefined(typeof(CuidType), actionType) ||
+                !System.Enum.IsDefined(typeof(CuidType), targetType))
             {
                 return 1f;
             }
@@ -102,6 +103,16 @@ namespace MidnightFamiliar.Combat.Systems
                 {
                     [CuidType.Arcane] = 1.25f,
                     [CuidType.Stone] = 0.75f
+                },
+                [CuidType.Mental] = new Dictionary<CuidType, float>
+                {
+                    [CuidType.Arcane] = 1.5f,
+                    [CuidType.Darkin] = 0.5f
+                },
+                [CuidType.Darkin] = new Dictionary<CuidType, float>
+                {
+                    [CuidType.Mental] = 1.5f,
+                    [CuidType.Volt] = 0.5f
                 }
             };
         }

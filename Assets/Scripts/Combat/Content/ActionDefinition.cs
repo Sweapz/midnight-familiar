@@ -17,13 +17,14 @@ namespace MidnightFamiliar.Combat.Content
         [Header("Behavior")]
         [SerializeField] private ActionKind kind = ActionKind.Attack;
         [SerializeField] private AbilityIntent abilityIntent = AbilityIntent.None;
-        [SerializeField] private CuidType actionType = CuidType.None;
+        [SerializeField] private CuidType actionType = CuidType.Ember;
         [SerializeField] private TargetRule targetRule = TargetRule.EnemySingle;
         [SerializeField] private int range = 1;
         [SerializeField] private int hitBonus = 0;
         [SerializeField] private int potency = 5;
         [SerializeField] private int cooldownTurns = 0;
         [SerializeField] private List<SupportEffect> supportEffects = new List<SupportEffect>(2);
+        [SerializeField] private List<TypeStatusApplication> typeStatusApplications = new List<TypeStatusApplication>(1);
 
         public string ActionId => actionId;
         public string DisplayName => displayName;
@@ -37,6 +38,7 @@ namespace MidnightFamiliar.Combat.Content
         public int Potency => potency;
         public int CooldownTurns => cooldownTurns;
         public IReadOnlyList<SupportEffect> SupportEffects => supportEffects;
+        public IReadOnlyList<TypeStatusApplication> TypeStatusApplications => typeStatusApplications;
 
         public void ConfigureForRuntime(
             string newActionId,
@@ -50,7 +52,8 @@ namespace MidnightFamiliar.Combat.Content
             int newHitBonus,
             int newPotency,
             int newCooldownTurns,
-            List<SupportEffect> newSupportEffects = null)
+            List<SupportEffect> newSupportEffects = null,
+            List<TypeStatusApplication> newTypeStatusApplications = null)
         {
             actionId = newActionId;
             displayName = newDisplayName;
@@ -64,6 +67,7 @@ namespace MidnightFamiliar.Combat.Content
             potency = newPotency;
             cooldownTurns = newCooldownTurns;
             supportEffects = newSupportEffects ?? new List<SupportEffect>(2);
+            typeStatusApplications = newTypeStatusApplications ?? new List<TypeStatusApplication>(1);
         }
     }
 }

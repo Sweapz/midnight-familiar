@@ -11,21 +11,18 @@ namespace MidnightFamiliar.Combat.Models
         public string SpeciesId = "cuid_species";
         public string DisplayName = "Cuid";
         public int Level = 1;
-        public CuidType PrimaryType = CuidType.None;
-        public CuidType SecondaryType = CuidType.None;
+        public CuidType PrimaryType = CuidType.Ember;
+        public CuidType SecondaryType = CuidType.Ember;
         public CuidStats Stats = new CuidStats();
         public CuidTrait Trait = new CuidTrait();
         public List<CuidAction> Actions = new List<CuidAction>(4);
         public int CurrentHealth = 30;
 
-        public bool HasSecondaryType => SecondaryType != CuidType.None;
+        public bool HasSecondaryType => SecondaryType != PrimaryType;
 
         public IEnumerable<CuidType> GetTypes()
         {
-            if (PrimaryType != CuidType.None)
-            {
-                yield return PrimaryType;
-            }
+            yield return PrimaryType;
 
             if (HasSecondaryType && SecondaryType != PrimaryType)
             {

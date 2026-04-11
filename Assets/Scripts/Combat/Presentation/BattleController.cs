@@ -263,10 +263,38 @@ namespace MidnightFamiliar.Combat.Presentation
 
         private void BeginPlayerTurn(CombatantState actor)
         {
+            TurnStartStatusResult start = _turnController.ProcessTurnStartEffects(actor);
+            if (!string.IsNullOrWhiteSpace(start.Message))
+            {
+                _combatLog.Insert(0, new BattleCombatLogPanelController.LogEntry
+                {
+                    DisplayText = $"R{_turnController.BattleState.RoundNumber}: {EscapeRichText(start.Message)}",
+                    HoverDetail = string.Empty
+                });
+                TrimCombatLog();
+                RefreshCombatLogPanel();
+                RefreshAllViews();
+            }
+
+            if (start.ForcedSkipTurn)
+            {
+                TurnStepResult step = _turnController.ExecuteTurn(TurnChoice.Pass(), advanceTurn: true);
+                AddLogFromStep(step);
+                _activePlayerActor = null;
+                _selectedAction = null;
+                _inputPhase = PlayerInputPhase.None;
+                ClearMoveMarkers();
+                ClearActionMarkers();
+                _playerTurnResolved = true;
+                RefreshHud();
+                RefreshActionPanel();
+                return;
+            }
+
             _activePlayerActor = actor;
             _selectedAction = null;
             _inputPhase = PlayerInputPhase.SelectAction;
-            _remainingMovement = GetMoveRange(actor);
+            _remainingMovement = start.ConsumedMovement ? 0 : GetMoveRange(actor);
             _hasUsedAction = false;
             BuildValidMoveCells(actor);
             RebuildMoveMarkers();
@@ -277,6 +305,27 @@ namespace MidnightFamiliar.Combat.Presentation
 
         private IEnumerator ExecuteEnemyTurn(CombatantState actor)
         {
+            TurnStartStatusResult start = _turnController.ProcessTurnStartEffects(actor);
+            if (!string.IsNullOrWhiteSpace(start.Message))
+            {
+                _combatLog.Insert(0, new BattleCombatLogPanelController.LogEntry
+                {
+                    DisplayText = $"R{_turnController.BattleState.RoundNumber}: {EscapeRichText(start.Message)}",
+                    HoverDetail = string.Empty
+                });
+                TrimCombatLog();
+                RefreshCombatLogPanel();
+                RefreshAllViews();
+            }
+
+            if (start.ForcedSkipTurn)
+            {
+                TurnStepResult paralyzedStep = _turnController.ExecuteTurn(TurnChoice.Pass(), advanceTurn: true);
+                AddLogFromStep(paralyzedStep);
+                RefreshHud();
+                yield break;
+            }
+
             CombatantState target = FindClosestOpponent(actor);
             if (target == null)
             {
@@ -286,7 +335,11 @@ namespace MidnightFamiliar.Combat.Presentation
             }
 
             GridPosition moveStart = actor.Position;
-            yield return MoveActorTowardTarget(actor, target);
+            if (!start.ConsumedMovement)
+            {
+                yield return MoveActorTowardTarget(actor, target);
+            }
+
             if (actor.IsDefeated)
             {
                 TurnStepResult forcedPass = _turnController.ExecuteTurn(TurnChoice.Pass());
@@ -295,7 +348,7 @@ namespace MidnightFamiliar.Combat.Presentation
                 yield break;
             }
 
-            int movementBudget = GetMoveRange(actor);
+            int movementBudget = start.ConsumedMovement ? 0 : GetMoveRange(actor);
             int movementUsed = moveStart.ManhattanDistanceTo(actor.Position);
             int movementRemaining = Mathf.Max(0, movementBudget - movementUsed);
 

@@ -11,7 +11,7 @@ namespace MidnightFamiliar.Combat.Models
         public string Description = string.Empty;
         public ActionKind Kind = ActionKind.Attack;
         public AbilityIntent AbilityIntent = AbilityIntent.None;
-        public CuidType ActionType = CuidType.None;
+        public CuidType ActionType = CuidType.Ember;
         public TargetRule TargetRule = TargetRule.EnemySingle;
         public int Range = 1;
         public int HitBonus = 0;
@@ -19,6 +19,7 @@ namespace MidnightFamiliar.Combat.Models
         public int CooldownTurns = 0;
         public bool IsBasicAttack = false;
         public List<SupportEffect> SupportEffects = new List<SupportEffect>(2);
+        public List<TypeStatusApplication> TypeStatusApplications = new List<TypeStatusApplication>(1);
 
         public bool IsAbility => Kind == ActionKind.Ability;
         public bool IsAttack => Kind == ActionKind.Attack;
@@ -45,7 +46,8 @@ namespace MidnightFamiliar.Combat.Models
                 Potency = Potency,
                 CooldownTurns = CooldownTurns,
                 IsBasicAttack = IsBasicAttack,
-                SupportEffects = CloneSupportEffects()
+                SupportEffects = CloneSupportEffects(),
+                TypeStatusApplications = CloneTypeStatusApplications()
             };
         }
 
@@ -66,6 +68,28 @@ namespace MidnightFamiliar.Combat.Models
                 }
 
                 copy.Add(effect.Clone());
+            }
+
+            return copy;
+        }
+
+        private List<TypeStatusApplication> CloneTypeStatusApplications()
+        {
+            var copy = new List<TypeStatusApplication>(TypeStatusApplications != null ? TypeStatusApplications.Count : 0);
+            if (TypeStatusApplications == null)
+            {
+                return copy;
+            }
+
+            for (int i = 0; i < TypeStatusApplications.Count; i++)
+            {
+                TypeStatusApplication application = TypeStatusApplications[i];
+                if (application == null)
+                {
+                    continue;
+                }
+
+                copy.Add(application.Clone());
             }
 
             return copy;

@@ -23,7 +23,9 @@ namespace MidnightFamiliar.Combat.Presentation
             CuidAction offensive = actor.Unit.Actions
                 .FirstOrDefault(action => action != null &&
                                           (action.Kind == ActionKind.Attack ||
-                                           (action.Kind == ActionKind.Ability && action.AbilityIntent == AbilityIntent.Offensive)) &&
+                                           (action.Kind == ActionKind.Ability &&
+                                            (action.AbilityIntent == AbilityIntent.Offensive ||
+                                             action.AbilityIntent == AbilityIntent.Debuff))) &&
                                           IsTargetInRange(actor, defaultTarget, action));
 
             if (offensive != null)

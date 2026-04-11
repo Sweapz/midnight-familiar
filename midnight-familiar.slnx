@@ -1,6 +1,6 @@
 ﻿<Solution>
   <Project Path="MidnightFamiliar.Runtime.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />
-  <Project Path="Assembly-CSharp.csproj" />
   <Project Path="MidnightFamiliar.EditModeTests.csproj" />
+  <Project Path="Assembly-CSharp.csproj" />
 </Solution>

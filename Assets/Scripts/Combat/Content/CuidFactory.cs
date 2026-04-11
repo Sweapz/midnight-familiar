@@ -18,8 +18,8 @@ namespace MidnightFamiliar.Combat.Content
                 SpeciesId = definition.CuidId,
                 DisplayName = definition.DisplayName,
                 Level = definition.Level,
-                PrimaryType = definition.PrimaryType,
-                SecondaryType = definition.SecondaryType,
+                PrimaryType = NormalizeType(definition.PrimaryType),
+                SecondaryType = NormalizeType(definition.SecondaryType),
                 Stats = new CuidStats
                 {
                     Attack = definition.Attack,
@@ -66,13 +66,14 @@ namespace MidnightFamiliar.Combat.Content
                         Description = actionDefinition.Description,
                         Kind = actionDefinition.Kind,
                         AbilityIntent = actionDefinition.AbilityIntent,
-                        ActionType = actionDefinition.ActionType,
+                        ActionType = NormalizeType(actionDefinition.ActionType),
                         TargetRule = actionDefinition.TargetRule,
                         Range = actionDefinition.Range,
                         HitBonus = actionDefinition.HitBonus,
                         Potency = actionDefinition.Potency,
                         CooldownTurns = actionDefinition.CooldownTurns,
-                        SupportEffects = BuildSupportEffects(actionDefinition.SupportEffects)
+                        SupportEffects = BuildSupportEffects(actionDefinition.SupportEffects),
+                        TypeStatusApplications = BuildTypeStatusApplications(actionDefinition.TypeStatusApplications)
                     });
                 }
             }
@@ -110,9 +111,36 @@ namespace MidnightFamiliar.Combat.Content
             return effects;
         }
 
+        private static List<TypeStatusApplication> BuildTypeStatusApplications(IReadOnlyList<TypeStatusApplication> definitions)
+        {
+            var applications = new List<TypeStatusApplication>(definitions != null ? definitions.Count : 0);
+            if (definitions == null)
+            {
+                return applications;
+            }
+
+            for (int i = 0; i < definitions.Count; i++)
+            {
+                TypeStatusApplication application = definitions[i];
+                if (application == null)
+                {
+                    continue;
+                }
+
+                applications.Add(application.Clone());
+            }
+
+            return applications;
+        }
+
         private static CuidAction BuildBasicAttackForPrimaryType(CuidType primaryType)
         {
             return BasicAttackCatalog.CreateForType(primaryType);
+        }
+
+        private static CuidType NormalizeType(CuidType type)
+        {
+            return Enum.IsDefined(typeof(CuidType), type) ? type : CuidType.Ember;
         }
     }
 
@@ -120,7 +148,12 @@ namespace MidnightFamiliar.Combat.Content
     {
         public static CuidAction CreateForType(CuidType type)
         {
-            string typeName = type == CuidType.None ? "Neutral" : type.ToString();
+            if (!Enum.IsDefined(typeof(CuidType), type))
+            {
+                type = CuidType.Ember;
+            }
+
+            string typeName = type.ToString();
             return new CuidAction
             {
                 Id = $"basic_{typeName.ToLowerInvariant()}",
@@ -154,7 +187,10 @@ namespace MidnightFamiliar.Combat.Content
                     return "Arc Spark";
                 case CuidType.Beast:
                     return "Feral Swipe";
-                case CuidType.None:
+                case CuidType.Mental:
+                    return "Mind Lance";
+                case CuidType.Darkin:
+                    return "Darkin Rend";
                 default:
                     return "Basic Strike";
             }
@@ -162,7 +198,7 @@ namespace MidnightFamiliar.Combat.Content
 
         private static string GetBasicAttackDescription(CuidType type)
         {
-            string label = type == CuidType.None ? "neutral" : type.ToString().ToLowerInvariant();
+            string label = type.ToString().ToLowerInvariant();
             return $"Reliable {label} basic attack.";
         }
     }

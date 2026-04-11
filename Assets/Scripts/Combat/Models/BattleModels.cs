@@ -55,7 +55,10 @@ namespace MidnightFamiliar.Combat.Models
             for (int i = 0; i < ActiveEffects.Count; i++)
             {
                 ActiveStatusEffect effect = ActiveEffects[i];
-                if (effect == null || effect.Kind != SupportEffectKind.StatModifier || effect.RemainingTurns <= 0)
+                if (effect == null ||
+                    effect.TypeStatus != TypeStatusId.None ||
+                    effect.Kind != SupportEffectKind.StatModifier ||
+                    effect.RemainingTurns <= 0)
                 {
                     continue;
                 }
@@ -123,7 +126,7 @@ namespace MidnightFamiliar.Combat.Models
                 return;
             }
 
-            if (effect.Kind == SupportEffectKind.Heal)
+            if (effect.Kind == SupportEffectKind.Heal && effect.TypeStatus == TypeStatusId.None)
             {
                 return;
             }
@@ -139,6 +142,96 @@ namespace MidnightFamiliar.Combat.Models
             }
 
             ActiveEffects.Add(effect);
+        }
+
+        public bool HasStatus(TypeStatusId status)
+        {
+            if (status == TypeStatusId.None || ActiveEffects == null || ActiveEffects.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < ActiveEffects.Count; i++)
+            {
+                ActiveStatusEffect effect = ActiveEffects[i];
+                if (effect != null && effect.TypeStatus == status && effect.RemainingTurns > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public bool TryGetStatus(TypeStatusId status, out ActiveStatusEffect activeStatus)
+        {
+            activeStatus = null;
+            if (status == TypeStatusId.None || ActiveEffects == null || ActiveEffects.Count == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < ActiveEffects.Count; i++)
+            {
+                ActiveStatusEffect effect = ActiveEffects[i];
+                if (effect != null && effect.TypeStatus == status && effect.RemainingTurns > 0)
+                {
+                    activeStatus = effect;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public void ApplyOrRefreshStatus(TypeStatusId status, int durationTurns)
+        {
+            if (status == TypeStatusId.None)
+            {
+                return;
+            }
+
+            int duration = Mathf.Max(1, durationTurns);
+            if (TryGetStatus(status, out ActiveStatusEffect existing))
+            {
+                existing.RemainingTurns = Mathf.Max(existing.RemainingTurns, duration);
+                return;
+            }
+
+            AddActiveEffect(new ActiveStatusEffect
+            {
+                Kind = SupportEffectKind.Heal,
+                TypeStatus = status,
+                Magnitude = 0,
+                RemainingTurns = duration
+            });
+        }
+
+        public void RemoveStatus(TypeStatusId status)
+        {
+            if (status == TypeStatusId.None || ActiveEffects == null || ActiveEffects.Count == 0)
+            {
+                return;
+            }
+
+            ActiveEffects.RemoveAll(effect => effect != null && effect.TypeStatus == status);
+        }
+
+        public bool UpgradeStatus(TypeStatusId fromStatus, TypeStatusId toStatus, int durationTurns)
+        {
+            if (fromStatus == TypeStatusId.None || toStatus == TypeStatusId.None)
+            {
+                return false;
+            }
+
+            if (!HasStatus(fromStatus))
+            {
+                return false;
+            }
+
+            RemoveStatus(fromStatus);
+            ApplyOrRefreshStatus(toStatus, durationTurns);
+            return true;
         }
 
         public void TickActiveEffectsAtTurnEnd()

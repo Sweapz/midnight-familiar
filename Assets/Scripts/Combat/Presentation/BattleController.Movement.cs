@@ -242,6 +242,11 @@ namespace MidnightFamiliar.Combat.Presentation
 
         private int GetMoveRange(CombatantState actor)
         {
+            if (actor != null && actor.HasStatus(TypeStatusId.Rooted))
+            {
+                return 0;
+            }
+
             int speed = actor != null ? actor.GetEffectiveStats().Speed : 1;
             return Mathf.Clamp(Mathf.Max(1, speed / 4), 1, 3);
         }

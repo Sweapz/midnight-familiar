@@ -16,8 +16,8 @@ namespace MidnightFamiliar.Combat.Content
         [SerializeField] private Sprite portrait;
 
         [Header("Typing")]
-        [SerializeField] private CuidType primaryType = CuidType.None;
-        [SerializeField] private CuidType secondaryType = CuidType.None;
+        [SerializeField] private CuidType primaryType = CuidType.Ember;
+        [SerializeField] private CuidType secondaryType = CuidType.Ember;
 
         [Header("Trait")]
         [SerializeField] private string traitId = "trait_id";

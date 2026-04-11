@@ -5,6 +5,11 @@ namespace MidnightFamiliar.Combat.Presentation.UI
 {
     public sealed partial class BattleCombatLogPanelController
     {
+        private const float TooltipMinHeight = 130f;
+        private const float TooltipMaxHeight = 420f;
+        private const float TooltipHorizontalPadding = 20f;
+        private const float TooltipVerticalPadding = 16f;
+
         private void EnsureHoverTooltipReferences()
         {
             _canvas = GetComponentInParent<Canvas>();
@@ -66,7 +71,7 @@ namespace MidnightFamiliar.Combat.Presentation.UI
             Text text = textRect.GetComponent<Text>();
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             text.fontSize = 15;
-            text.alignment = TextAnchor.MiddleLeft;
+            text.alignment = TextAnchor.UpperLeft;
             text.color = Color.white;
             text.horizontalOverflow = HorizontalWrapMode.Wrap;
             text.verticalOverflow = VerticalWrapMode.Overflow;
@@ -152,9 +157,31 @@ namespace MidnightFamiliar.Combat.Presentation.UI
             }
 
             lineHoverTooltipText.text = detail;
+            ResizeLineHoverTooltipToFitText(detail);
             lineHoverTooltipRoot.gameObject.SetActive(true);
             _isLineDetailPopupOpen = true;
             PositionLineHoverTooltip(screenPoint);
+        }
+
+        private void ResizeLineHoverTooltipToFitText(string detail)
+        {
+            if (lineHoverTooltipRoot == null || lineHoverTooltipText == null || string.IsNullOrEmpty(detail))
+            {
+                return;
+            }
+
+            float width = Mathf.Max(120f, lineHoverTooltipRoot.sizeDelta.x - TooltipHorizontalPadding);
+            var settings = lineHoverTooltipText.GetGenerationSettings(new Vector2(width, 0f));
+            float preferredTextHeight = lineHoverTooltipText.cachedTextGeneratorForLayout
+                .GetPreferredHeight(detail, settings) / Mathf.Max(0.01f, lineHoverTooltipText.pixelsPerUnit);
+
+            float canvasBound = _canvasRect != null ? _canvasRect.rect.height - 20f : TooltipMaxHeight;
+            float maxHeight = Mathf.Max(TooltipMinHeight, Mathf.Min(TooltipMaxHeight, canvasBound));
+            float targetHeight = Mathf.Clamp(preferredTextHeight + TooltipVerticalPadding, TooltipMinHeight, maxHeight);
+
+            Vector2 size = lineHoverTooltipRoot.sizeDelta;
+            size.y = targetHeight;
+            lineHoverTooltipRoot.sizeDelta = size;
         }
 
         private void PositionLineHoverTooltip(Vector2 screenPoint)

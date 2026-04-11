@@ -76,12 +76,24 @@ namespace MidnightFamiliar.Combat.Presentation
             string hoverDetail = string.Empty;
             bool isOffensive =
                 resolution.Kind == ActionKind.Attack ||
-                (resolution.Kind == ActionKind.Ability && resolution.AbilityIntent == AbilityIntent.Offensive);
+                (resolution.Kind == ActionKind.Ability &&
+                 (resolution.AbilityIntent == AbilityIntent.Offensive ||
+                  resolution.AbilityIntent == AbilityIntent.Debuff));
             if (isOffensive)
             {
-                string rollType = resolution.Kind == ActionKind.Attack
-                    ? "Attack vs Defense"
-                    : "Ability vs Resistance";
+                string rollType;
+                if (resolution.Kind == ActionKind.Attack)
+                {
+                    rollType = "Attack vs Defense";
+                }
+                else if (resolution.AbilityIntent == AbilityIntent.Debuff)
+                {
+                    rollType = "Debuff vs Resistance";
+                }
+                else
+                {
+                    rollType = "Ability vs Resistance";
+                }
                 hoverDetail = $"{rollType}: {resolution.AttackRoll} vs {resolution.DefenseRoll}";
                 if (!string.IsNullOrWhiteSpace(resolution.DamageBreakdown))
                 {

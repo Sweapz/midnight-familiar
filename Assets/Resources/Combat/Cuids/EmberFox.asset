@@ -32,7 +32,7 @@ MonoBehaviour:
   abilityDamage: 2
   abilityReduction: 0
   actions:
-  - {fileID: 11400000, guid: b1a3f8d1e7d24f299ee5d58ca1f7a001, type: 2}
+  - {fileID: 11400000, guid: b1a3f8d1e7d24f299ee5d58ca1f7a002, type: 2}
   - {fileID: 11400000, guid: b1a3f8d1e7d24f299ee5d58ca1f7a005, type: 2}
   - {fileID: 11400000, guid: b1a3f8d1e7d24f299ee5d58ca1f7a006, type: 2}
   - {fileID: 11400000, guid: b1a3f8d1e7d24f299ee5d58ca1f7a007, type: 2}

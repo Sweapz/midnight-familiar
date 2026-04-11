@@ -200,6 +200,11 @@ namespace MidnightFamiliar.Combat.Presentation
 
         private static string FormatEffectLabel(ActiveStatusEffect effect)
         {
+            if (effect.TypeStatus != TypeStatusId.None)
+            {
+                return $"{effect.TypeStatus} ({effect.RemainingTurns}t)";
+            }
+
             switch (effect.Kind)
             {
                 case SupportEffectKind.StatModifier:

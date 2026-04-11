@@ -26,6 +26,11 @@ Prioritize clarity and maintainability over cleverness.
 - For large Unity controllers, prefer partial-class file splits by concern (for example `*.Input.cs`, `*.UI.cs`, `*.Opportunity.cs`) before adding new systems.
 - Keep one clear responsibility per file whenever practical, even if the runtime type remains the same.
 
+## Testing Expectations
+- When adding or modifying behavior that is unit-testable, add new unit tests or update existing tests in the same change.
+- Treat test updates as part of the feature/fix definition of done, not an optional follow-up.
+- Prefer small, focused tests that validate the changed behavior and guard against regressions.
+
 ## Code Style (C# / Unity)
 - Use PascalCase for classes, methods, and public members.
 - Use camelCase for local variables and private fields.
