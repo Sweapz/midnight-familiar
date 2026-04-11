@@ -233,7 +233,7 @@ namespace MidnightFamiliar.Combat.Presentation
 
                 if (actor.Team == TeamSide.Player)
                 {
-                    BeginPlayerTurn(actor);
+                    yield return BeginPlayerTurn(actor);
                     while (!_playerTurnResolved)
                     {
                         yield return null;
@@ -263,8 +263,9 @@ namespace MidnightFamiliar.Combat.Presentation
             }
         }
 
-        private void BeginPlayerTurn(CombatantState actor)
+        private IEnumerator BeginPlayerTurn(CombatantState actor)
         {
+            GridPosition turnStartPosition = actor.Position;
             TurnStartStatusResult start = _turnController.ProcessTurnStartEffects(actor);
             if (!string.IsNullOrWhiteSpace(start.Message))
             {
@@ -276,6 +277,25 @@ namespace MidnightFamiliar.Combat.Presentation
                 TrimCombatLog();
                 RefreshCombatLogPanel();
                 RefreshAllViews();
+            }
+
+            if (start.ConsumedMovement && (turnStartPosition.X != actor.Position.X || turnStartPosition.Y != actor.Position.Y))
+            {
+                yield return ResolveOpportunityAttacksBeforeMove(actor, turnStartPosition, actor.Position);
+                if (actor.IsDefeated)
+                {
+                    TurnStepResult defeatedStep = _turnController.ExecuteTurn(TurnChoice.Pass(), advanceTurn: true);
+                    AddLogFromStep(defeatedStep);
+                    _activePlayerActor = null;
+                    _selectedAction = null;
+                    _inputPhase = PlayerInputPhase.None;
+                    ClearMoveMarkers();
+                    ClearActionMarkers();
+                    _playerTurnResolved = true;
+                    RefreshHud();
+                    RefreshActionPanel();
+                    yield break;
+                }
             }
 
             if (start.ForcedSkipTurn)
@@ -290,7 +310,7 @@ namespace MidnightFamiliar.Combat.Presentation
                 _playerTurnResolved = true;
                 RefreshHud();
                 RefreshActionPanel();
-                return;
+                yield break;
             }
 
             _activePlayerActor = actor;
@@ -303,10 +323,12 @@ namespace MidnightFamiliar.Combat.Presentation
             ClearActionMarkers();
             RefreshHud();
             RefreshActionPanel();
+            yield break;
         }
 
         private IEnumerator ExecuteEnemyTurn(CombatantState actor)
         {
+            GridPosition turnStartPosition = actor.Position;
             TurnStartStatusResult start = _turnController.ProcessTurnStartEffects(actor);
             if (!string.IsNullOrWhiteSpace(start.Message))
             {
@@ -318,6 +340,18 @@ namespace MidnightFamiliar.Combat.Presentation
                 TrimCombatLog();
                 RefreshCombatLogPanel();
                 RefreshAllViews();
+            }
+
+            if (start.ConsumedMovement && (turnStartPosition.X != actor.Position.X || turnStartPosition.Y != actor.Position.Y))
+            {
+                yield return ResolveOpportunityAttacksBeforeMove(actor, turnStartPosition, actor.Position);
+                if (actor.IsDefeated)
+                {
+                    TurnStepResult defeatedStep = _turnController.ExecuteTurn(TurnChoice.Pass());
+                    AddLogFromStep(defeatedStep);
+                    RefreshHud();
+                    yield break;
+                }
             }
 
             if (start.ForcedSkipTurn)
