@@ -7,6 +7,14 @@ namespace MidnightFamiliar.Combat.Presentation.UI
 {
     public sealed class BattleHudController : MonoBehaviour
     {
+        private static readonly Vector2 HoverTooltipSize = new Vector2(480f, 240f);
+        private static readonly Vector2 HoverNamePosition = new Vector2(10f, -8f);
+        private static readonly Vector2 HoverNameSize = new Vector2(460f, 26f);
+        private static readonly Vector2 HoverStatsPosition = new Vector2(10f, -40f);
+        private static readonly Vector2 HoverStatsSize = new Vector2(220f, 190f);
+        private static readonly Vector2 HoverEffectsPosition = new Vector2(248f, -40f);
+        private static readonly Vector2 HoverEffectsSize = new Vector2(220f, 190f);
+
         [Header("Turn Order")]
         [SerializeField] private RectTransform turnOrderContainer;
         [SerializeField] private BattleTurnOrderEntryView turnOrderItemPrefab;
@@ -260,6 +268,8 @@ namespace MidnightFamiliar.Combat.Presentation.UI
                 hoverEffectsLabel = t != null ? t.GetComponent<Text>() : null;
             }
 
+            ApplyHoverTooltipLayout();
+
             if (hoverTooltipRoot != null)
             {
                 hoverTooltipRoot.gameObject.SetActive(false);
@@ -278,17 +288,55 @@ namespace MidnightFamiliar.Combat.Presentation.UI
             root.anchorMin = new Vector2(0.5f, 0.5f);
             root.anchorMax = new Vector2(0.5f, 0.5f);
             root.pivot = new Vector2(0.5f, 0.5f);
-            root.sizeDelta = new Vector2(320f, 220f);
+            root.sizeDelta = HoverTooltipSize;
 
             Image background = root.GetComponent<Image>();
             background.color = new Color(0f, 0f, 0f, 0.82f);
 
             Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            hoverNameLabel = CreateTooltipText(root, "NameText", font, 17, TextAnchor.UpperLeft, new Vector2(10f, -8f), new Vector2(300f, 26f));
-            hoverStatsLabel = CreateTooltipText(root, "StatsText", font, 14, TextAnchor.UpperLeft, new Vector2(10f, -36f), new Vector2(300f, 108f));
-            hoverEffectsLabel = CreateTooltipText(root, "EffectsText", font, 14, TextAnchor.UpperLeft, new Vector2(10f, -146f), new Vector2(300f, 68f));
+            hoverNameLabel = CreateTooltipText(root, "NameText", font, 17, TextAnchor.UpperLeft, HoverNamePosition, HoverNameSize);
+            hoverStatsLabel = CreateTooltipText(root, "StatsText", font, 14, TextAnchor.UpperLeft, HoverStatsPosition, HoverStatsSize);
+            hoverEffectsLabel = CreateTooltipText(root, "EffectsText", font, 14, TextAnchor.UpperLeft, HoverEffectsPosition, HoverEffectsSize);
+            ApplyHoverTooltipLayout();
 
             return root;
+        }
+
+        private void ApplyHoverTooltipLayout()
+        {
+            if (hoverTooltipRoot == null)
+            {
+                return;
+            }
+
+            hoverTooltipRoot.sizeDelta = HoverTooltipSize;
+            ApplyTooltipTextLayout(hoverNameLabel, HoverNamePosition, HoverNameSize, TextAnchor.UpperLeft, wrap: false);
+            ApplyTooltipTextLayout(hoverStatsLabel, HoverStatsPosition, HoverStatsSize, TextAnchor.UpperLeft, wrap: true);
+            ApplyTooltipTextLayout(hoverEffectsLabel, HoverEffectsPosition, HoverEffectsSize, TextAnchor.UpperLeft, wrap: true);
+        }
+
+        private static void ApplyTooltipTextLayout(
+            Text text,
+            Vector2 anchoredPosition,
+            Vector2 size,
+            TextAnchor alignment,
+            bool wrap)
+        {
+            if (text == null)
+            {
+                return;
+            }
+
+            RectTransform rect = text.rectTransform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = size;
+
+            text.alignment = alignment;
+            text.horizontalOverflow = wrap ? HorizontalWrapMode.Wrap : HorizontalWrapMode.Overflow;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
         }
 
         private static Text CreateTooltipText(

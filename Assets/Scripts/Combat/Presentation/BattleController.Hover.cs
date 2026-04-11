@@ -158,8 +158,6 @@ namespace MidnightFamiliar.Combat.Presentation
             AppendStatLine(sb, "DMG RED", baseStats.DamageReduction, effective.DamageReduction);
             AppendStatLine(sb, "A.DMG", baseStats.AbilityDamage, effective.AbilityDamage);
             AppendStatLine(sb, "A.RED", baseStats.AbilityReduction, effective.AbilityReduction);
-            bool opportunityReady = !_spentOpportunityCombatants.Contains(combatant.CombatantId);
-            sb.AppendLine($"Opportunity {(opportunityReady ? "Ready" : "Spent")}");
             return sb.ToString().TrimEnd();
         }
 

@@ -337,14 +337,20 @@ namespace MidnightFamiliar.Combat.Presentation.Editor
             root.anchorMin = new Vector2(0.5f, 0.5f);
             root.anchorMax = new Vector2(0.5f, 0.5f);
             root.pivot = new Vector2(0.5f, 0.5f);
-            root.sizeDelta = new Vector2(320f, 220f);
+            root.sizeDelta = new Vector2(480f, 240f);
 
             Image background = root.GetComponent<Image>();
             background.color = new Color(0f, 0f, 0f, 0.82f);
 
-            EnsureChildText(root, "NameText", new Vector2(10f, -8f), new Vector2(300f, 26f), 17, TextAnchor.UpperLeft);
-            EnsureChildText(root, "StatsText", new Vector2(10f, -36f), new Vector2(300f, 108f), 14, TextAnchor.UpperLeft);
-            EnsureChildText(root, "EffectsText", new Vector2(10f, -146f), new Vector2(300f, 68f), 14, TextAnchor.UpperLeft);
+            Text name = EnsureChildText(root, "NameText", new Vector2(10f, -8f), new Vector2(460f, 26f), 17, TextAnchor.UpperLeft);
+            Text stats = EnsureChildText(root, "StatsText", new Vector2(10f, -40f), new Vector2(220f, 190f), 14, TextAnchor.UpperLeft);
+            Text effects = EnsureChildText(root, "EffectsText", new Vector2(248f, -40f), new Vector2(220f, 190f), 14, TextAnchor.UpperLeft);
+            name.horizontalOverflow = HorizontalWrapMode.Overflow;
+            name.verticalOverflow = VerticalWrapMode.Overflow;
+            stats.horizontalOverflow = HorizontalWrapMode.Wrap;
+            stats.verticalOverflow = VerticalWrapMode.Overflow;
+            effects.horizontalOverflow = HorizontalWrapMode.Wrap;
+            effects.verticalOverflow = VerticalWrapMode.Overflow;
             root.gameObject.SetActive(false);
             return root;
         }
