@@ -16,13 +16,14 @@ MonoBehaviour:
   displayName: Splinter Strike
   description: Strike with stone shards and may leave Jagged wounds.
   kind: 0
-  abilityIntent: 0
+  abilityIntent: 1
   actionType: 5
   targetRule: 0
   range: 1
   hitBonus: 0
   potency: 8
   cooldownTurns: 0
+  supportEffects: []
   typeStatusApplications:
   - Kind: 0
     Status: 10

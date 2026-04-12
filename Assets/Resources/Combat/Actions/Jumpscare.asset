@@ -19,10 +19,11 @@ MonoBehaviour:
   abilityIntent: 3
   actionType: 9
   targetRule: 0
-  range: 3
+  range: 1
   hitBonus: 0
   potency: 0
   cooldownTurns: 2
+  supportEffects: []
   typeStatusApplications:
   - Kind: 0
     Status: 12
