@@ -68,6 +68,10 @@ namespace MidnightFamiliar.Combat.Presentation
         private readonly ICombatMovementService _movementService = new CombatMovementService();
         private readonly ICombatSpatialQueryService _spatialQueryService = new CombatSpatialQueryService();
         private readonly ICombatActionQueryService _actionQueryService = new CombatActionQueryService();
+        private readonly ICombatLogFormattingService _combatLogFormattingService = new CombatLogFormattingService();
+        private readonly ICombatStatusPresentationService _statusPresentationService = new CombatStatusPresentationService();
+        private readonly ICombatTurnFlowService _turnFlowService = new CombatTurnFlowService();
+        private readonly ICombatValidationService _validationService = new CombatValidationService();
         private readonly List<CuidAction> _pendingOpportunityActions = new List<CuidAction>(3);
         private readonly HashSet<string> _spentOpportunityCombatants = new HashSet<string>();
 
@@ -268,24 +272,27 @@ namespace MidnightFamiliar.Combat.Presentation
         {
             GridPosition turnStartPosition = actor.Position;
             TurnStartStatusResult start = _turnController.ProcessTurnStartEffects(actor);
-            if (!string.IsNullOrWhiteSpace(start.Message))
+            if (_turnFlowService.TryBuildTurnStartLogEntry(
+                start,
+                _turnController.BattleState.RoundNumber,
+                _combatLogFormattingService,
+                out BattleCombatLogPanelController.LogEntry startEntry))
             {
-                _combatLog.Insert(0, new BattleCombatLogPanelController.LogEntry
-                {
-                    DisplayText = $"R{_turnController.BattleState.RoundNumber}: {EscapeRichText(start.Message)}",
-                    HoverDetail = string.Empty
-                });
+                _combatLog.Insert(0, startEntry);
                 TrimCombatLog();
                 RefreshCombatLogPanel();
                 RefreshAllViews();
             }
 
-            if (start.ConsumedMovement && (turnStartPosition.X != actor.Position.X || turnStartPosition.Y != actor.Position.Y))
+            if (_turnFlowService.DidActorRepositionAtTurnStart(start, turnStartPosition, actor.Position))
             {
                 yield return ResolveOpportunityAttacksBeforeMove(actor, turnStartPosition, actor.Position);
-                if (actor.IsDefeated)
+                if (_turnFlowService.TryExecutePassIfDefeated(
+                    actor,
+                    _turnController,
+                    advanceTurn: true,
+                    out TurnStepResult defeatedStep))
                 {
-                    TurnStepResult defeatedStep = _turnController.ExecuteTurn(TurnChoice.Pass(), advanceTurn: true);
                     AddLogFromStep(defeatedStep);
                     _activePlayerActor = null;
                     _selectedAction = null;
@@ -299,10 +306,13 @@ namespace MidnightFamiliar.Combat.Presentation
                 }
             }
 
-            if (start.ForcedSkipTurn)
+            if (_turnFlowService.TryExecuteForcedSkipTurn(
+                start,
+                _turnController,
+                advanceTurn: true,
+                out TurnStepResult forcedSkipStep))
             {
-                TurnStepResult step = _turnController.ExecuteTurn(TurnChoice.Pass(), advanceTurn: true);
-                AddLogFromStep(step);
+                AddLogFromStep(forcedSkipStep);
                 _activePlayerActor = null;
                 _selectedAction = null;
                 _inputPhase = PlayerInputPhase.None;
@@ -317,7 +327,7 @@ namespace MidnightFamiliar.Combat.Presentation
             _activePlayerActor = actor;
             _selectedAction = null;
             _inputPhase = PlayerInputPhase.SelectAction;
-            _remainingMovement = start.ConsumedMovement ? 0 : GetMoveRange(actor);
+            _remainingMovement = _turnFlowService.ComputeTurnStartMovementBudget(start, GetMoveRange(actor));
             _hasUsedAction = false;
             BuildValidMoveCells(actor);
             RebuildMoveMarkers();
@@ -331,33 +341,39 @@ namespace MidnightFamiliar.Combat.Presentation
         {
             GridPosition turnStartPosition = actor.Position;
             TurnStartStatusResult start = _turnController.ProcessTurnStartEffects(actor);
-            if (!string.IsNullOrWhiteSpace(start.Message))
+            if (_turnFlowService.TryBuildTurnStartLogEntry(
+                start,
+                _turnController.BattleState.RoundNumber,
+                _combatLogFormattingService,
+                out BattleCombatLogPanelController.LogEntry startEntry))
             {
-                _combatLog.Insert(0, new BattleCombatLogPanelController.LogEntry
-                {
-                    DisplayText = $"R{_turnController.BattleState.RoundNumber}: {EscapeRichText(start.Message)}",
-                    HoverDetail = string.Empty
-                });
+                _combatLog.Insert(0, startEntry);
                 TrimCombatLog();
                 RefreshCombatLogPanel();
                 RefreshAllViews();
             }
 
-            if (start.ConsumedMovement && (turnStartPosition.X != actor.Position.X || turnStartPosition.Y != actor.Position.Y))
+            if (_turnFlowService.DidActorRepositionAtTurnStart(start, turnStartPosition, actor.Position))
             {
                 yield return ResolveOpportunityAttacksBeforeMove(actor, turnStartPosition, actor.Position);
-                if (actor.IsDefeated)
+                if (_turnFlowService.TryExecutePassIfDefeated(
+                    actor,
+                    _turnController,
+                    advanceTurn: false,
+                    out TurnStepResult defeatedStep))
                 {
-                    TurnStepResult defeatedStep = _turnController.ExecuteTurn(TurnChoice.Pass());
                     AddLogFromStep(defeatedStep);
                     RefreshHud();
                     yield break;
                 }
             }
 
-            if (start.ForcedSkipTurn)
+            if (_turnFlowService.TryExecuteForcedSkipTurn(
+                start,
+                _turnController,
+                advanceTurn: true,
+                out TurnStepResult paralyzedStep))
             {
-                TurnStepResult paralyzedStep = _turnController.ExecuteTurn(TurnChoice.Pass(), advanceTurn: true);
                 AddLogFromStep(paralyzedStep);
                 RefreshHud();
                 yield break;
@@ -377,17 +393,22 @@ namespace MidnightFamiliar.Combat.Presentation
                 yield return MoveActorTowardTarget(actor, target);
             }
 
-            if (actor.IsDefeated)
+            if (_turnFlowService.TryExecutePassIfDefeated(
+                actor,
+                _turnController,
+                advanceTurn: false,
+                out TurnStepResult forcedPass))
             {
-                TurnStepResult forcedPass = _turnController.ExecuteTurn(TurnChoice.Pass());
                 AddLogFromStep(forcedPass);
                 RefreshHud();
                 yield break;
             }
 
-            int movementBudget = start.ConsumedMovement ? 0 : GetMoveRange(actor);
-            int movementUsed = moveStart.ManhattanDistanceTo(actor.Position);
-            int movementRemaining = Mathf.Max(0, movementBudget - movementUsed);
+            int movementRemaining = _turnFlowService.ComputeRemainingMovementAfterMove(
+                start,
+                GetMoveRange(actor),
+                moveStart,
+                actor.Position);
 
             TurnChoice choice = _actionQueryService.BuildEnemyChoice(actor, target, _spatialQueryService);
             TurnStepResult step = _turnController.ExecuteTurn(choice);

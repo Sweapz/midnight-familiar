@@ -15,7 +15,7 @@ namespace MidnightFamiliar.Combat.Presentation
 
         private bool IsValidTargetForSelectedAction(CombatantState actor, CombatantState target, CuidAction action)
         {
-            return _actionQueryService.IsValidTarget(actor, target, action, _spatialQueryService);
+            return _validationService.IsValidTargetSelection(actor, target, action, _actionQueryService, _spatialQueryService);
         }
 
         private TeamRoster BuildTeam(TeamSide side, List<CuidDefinition> definitions)

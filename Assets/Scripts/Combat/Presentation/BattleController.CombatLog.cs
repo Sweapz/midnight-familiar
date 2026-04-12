@@ -1,4 +1,3 @@
-using MidnightFamiliar.Combat.Content;
 using MidnightFamiliar.Combat.Models;
 using MidnightFamiliar.Combat.Presentation.UI;
 using MidnightFamiliar.Combat.Systems;
@@ -15,13 +14,12 @@ namespace MidnightFamiliar.Combat.Presentation
                 return;
             }
 
-            var entry = step.Resolution != null
-                ? BuildResolutionLogEntry(step.RoundNumber, step.Resolution)
-                : new BattleCombatLogPanelController.LogEntry
-                {
-                    DisplayText = $"R{step.RoundNumber}: {EscapeRichText(step.Message)}",
-                    HoverDetail = string.Empty
-                };
+            BattleState state = _turnController != null ? _turnController.BattleState : null;
+            BattleCombatLogPanelController.LogEntry entry = _combatLogFormattingService.BuildStepEntry(step, state);
+            if (entry == null)
+            {
+                return;
+            }
 
             _combatLog.Insert(0, entry);
             TrimCombatLog();
@@ -30,12 +28,7 @@ namespace MidnightFamiliar.Combat.Presentation
 
         private void FinishBattle(TeamSide? winner)
         {
-            string winnerText = winner.HasValue ? winner.Value.ToString() : "None";
-            _combatLog.Insert(0, new BattleCombatLogPanelController.LogEntry
-            {
-                DisplayText = $"Battle ended. Winner: {EscapeRichText(winnerText)}",
-                HoverDetail = string.Empty
-            });
+            _combatLog.Insert(0, _combatLogFormattingService.BuildBattleEndedEntry(winner));
 
             TrimCombatLog();
             RefreshCombatLogPanel();
@@ -62,14 +55,51 @@ namespace MidnightFamiliar.Combat.Presentation
                 _combatLog.RemoveAt(_combatLog.Count - 1);
             }
         }
+    }
 
-        private BattleCombatLogPanelController.LogEntry BuildResolutionLogEntry(int roundNumber, ActionResolution resolution)
+    public interface ICombatLogFormattingService
+    {
+        BattleCombatLogPanelController.LogEntry BuildStepEntry(TurnStepResult step, BattleState battleState);
+        BattleCombatLogPanelController.LogEntry BuildResolutionEntry(
+            int roundNumber,
+            ActionResolution resolution,
+            BattleState battleState);
+        BattleCombatLogPanelController.LogEntry BuildRoundMessageEntry(int roundNumber, string message);
+        BattleCombatLogPanelController.LogEntry BuildBattleEndedEntry(TeamSide? winner);
+    }
+
+    public sealed class CombatLogFormattingService : ICombatLogFormattingService
+    {
+        public BattleCombatLogPanelController.LogEntry BuildStepEntry(TurnStepResult step, BattleState battleState)
         {
-            CombatantState actor = _turnController?.BattleState?.FindCombatant(resolution.ActorCombatantId);
-            CombatantState target = _turnController?.BattleState?.FindCombatant(resolution.TargetCombatantId);
+            if (step == null)
+            {
+                return null;
+            }
 
-            string actorText = FormatCombatantLogLabel(actor, resolution.ActorCombatantId);
-            string targetText = FormatCombatantLogLabel(target, resolution.TargetCombatantId);
+            if (step.Resolution != null)
+            {
+                return BuildResolutionEntry(step.RoundNumber, step.Resolution, battleState);
+            }
+
+            return BuildRoundMessageEntry(step.RoundNumber, step.Message);
+        }
+
+        public BattleCombatLogPanelController.LogEntry BuildResolutionEntry(
+            int roundNumber,
+            ActionResolution resolution,
+            BattleState battleState)
+        {
+            if (resolution == null)
+            {
+                return BuildRoundMessageEntry(roundNumber, string.Empty);
+            }
+
+            CombatantState actor = battleState?.FindCombatant(resolution.ActorCombatantId);
+            CombatantState target = battleState?.FindCombatant(resolution.TargetCombatantId);
+
+            string actorText = FormatCombatantLabel(actor, resolution.ActorCombatantId);
+            string targetText = FormatCombatantLabel(target, resolution.TargetCombatantId);
             string summary = EscapeRichText(resolution.Summary);
             string display = $"R{roundNumber}: {actorText} -> {targetText}: {summary}";
 
@@ -94,6 +124,7 @@ namespace MidnightFamiliar.Combat.Presentation
                 {
                     rollType = "Ability vs Resistance";
                 }
+
                 hoverDetail = $"{rollType}: {resolution.AttackRoll} vs {resolution.DefenseRoll}";
                 if (!string.IsNullOrWhiteSpace(resolution.DamageBreakdown))
                 {
@@ -108,7 +139,26 @@ namespace MidnightFamiliar.Combat.Presentation
             };
         }
 
-        private static string FormatCombatantLogLabel(CombatantState combatant, string fallbackId)
+        public BattleCombatLogPanelController.LogEntry BuildRoundMessageEntry(int roundNumber, string message)
+        {
+            return new BattleCombatLogPanelController.LogEntry
+            {
+                DisplayText = $"R{roundNumber}: {EscapeRichText(message)}",
+                HoverDetail = string.Empty
+            };
+        }
+
+        public BattleCombatLogPanelController.LogEntry BuildBattleEndedEntry(TeamSide? winner)
+        {
+            string winnerText = winner.HasValue ? winner.Value.ToString() : "None";
+            return new BattleCombatLogPanelController.LogEntry
+            {
+                DisplayText = $"Battle ended. Winner: {EscapeRichText(winnerText)}",
+                HoverDetail = string.Empty
+            };
+        }
+
+        private static string FormatCombatantLabel(CombatantState combatant, string fallbackId)
         {
             string name = combatant != null && combatant.Unit != null
                 ? combatant.Unit.DisplayName

@@ -129,7 +129,7 @@ namespace MidnightFamiliar.Combat.Presentation
 
         private void ResolveOpportunityAction(CombatantState attacker, CombatantState target, CuidAction action)
         {
-            if (attacker == null || target == null || action == null || attacker.IsDefeated || target.IsDefeated)
+            if (!_validationService.CanResolveOpportunityAction(attacker, target, action))
             {
                 return;
             }
@@ -138,7 +138,10 @@ namespace MidnightFamiliar.Combat.Presentation
 
             ActionResolution resolution = _opportunityResolver.ResolveAction(attacker, target, action);
             resolution.Summary = $"Opportunity: {resolution.Summary}";
-            _combatLog.Insert(0, BuildResolutionLogEntry(_turnController.BattleState.RoundNumber, resolution));
+            _combatLog.Insert(0, _combatLogFormattingService.BuildResolutionEntry(
+                _turnController.BattleState.RoundNumber,
+                resolution,
+                _turnController.BattleState));
             TrimCombatLog();
             RefreshCombatLogPanel();
             RefreshAllViews();
@@ -152,8 +155,14 @@ namespace MidnightFamiliar.Combat.Presentation
             ClearMoveMarkers();
             ClearActionMarkers();
 
-            TurnStepResult endStep = _turnController.ExecuteTurn(TurnChoice.Pass(), advanceTurn: true);
-            AddLogFromStep(endStep);
+            if (_turnFlowService.TryExecutePassIfDefeated(
+                _activePlayerActor,
+                _turnController,
+                advanceTurn: true,
+                out TurnStepResult endStep))
+            {
+                AddLogFromStep(endStep);
+            }
             _activePlayerActor = null;
             _playerTurnResolved = true;
             RefreshHud();

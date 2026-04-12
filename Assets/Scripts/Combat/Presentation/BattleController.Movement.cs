@@ -30,14 +30,14 @@ namespace MidnightFamiliar.Combat.Presentation
                 return;
             }
 
-            if (!_validMoveCells.Any(c => c.X == cell.X && c.Y == cell.Y))
+            if (!_validationService.IsReachableMoveCell(cell, _validMoveCells))
             {
                 Debug.Log($"Move click rejected: cell [{cell.X},{cell.Y}] is outside current move range.");
                 return;
             }
 
             int moveCost = _activePlayerActor.Position.ManhattanDistanceTo(cell);
-            if (moveCost <= 0 || moveCost > _remainingMovement)
+            if (!_validationService.IsMoveCostWithinBudget(moveCost, _remainingMovement))
             {
                 Debug.Log($"Move click rejected: movement cost {moveCost} exceeds remaining {_remainingMovement}.");
                 return;
