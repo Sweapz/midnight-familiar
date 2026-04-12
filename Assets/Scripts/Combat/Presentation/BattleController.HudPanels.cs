@@ -218,20 +218,9 @@ namespace MidnightFamiliar.Combat.Presentation
                 portrait);
         }
 
-        private static List<CuidAction> GetOrderedActionsForUi(CombatantState actor)
+        private List<CuidAction> GetOrderedActionsForUi(CombatantState actor)
         {
-            if (actor?.Unit?.Actions == null)
-            {
-                return new List<CuidAction>(0);
-            }
-
-            return actor.Unit.Actions
-                .Select((action, index) => new { action, index })
-                .Where(pair => pair.action != null)
-                .OrderByDescending(pair => pair.action.IsBasicAttack)
-                .ThenBy(pair => pair.index)
-                .Select(pair => pair.action)
-                .ToList();
+            return _actionQueryService.GetOrderedActionsForUi(actor);
         }
 
         private void EnsureCombatLogPanelReference()

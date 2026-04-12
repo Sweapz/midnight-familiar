@@ -13,82 +13,9 @@ namespace MidnightFamiliar.Combat.Presentation
             return _spatialQueryService.FindClosestOpponent(_turnController.BattleState, actor);
         }
 
-        private TurnChoice BuildEnemyChoice(CombatantState actor, CombatantState defaultTarget)
-        {
-            CuidAction offensive = actor.Unit.Actions
-                .FirstOrDefault(action => action != null &&
-                                          (action.Kind == ActionKind.Attack ||
-                                           (action.Kind == ActionKind.Ability &&
-                                            (action.AbilityIntent == AbilityIntent.Offensive ||
-                                             action.AbilityIntent == AbilityIntent.Debuff))) &&
-                                          IsTargetInRange(actor, defaultTarget, action));
-
-            if (offensive != null)
-            {
-                return new TurnChoice
-                {
-                    IsPass = false,
-                    ActionId = offensive.Id,
-                    TargetCombatantId = defaultTarget.CombatantId
-                };
-            }
-
-            CuidAction supportive = actor.Unit.Actions
-                .FirstOrDefault(action => action != null &&
-                                          action.Kind == ActionKind.Ability &&
-                                          action.AbilityIntent == AbilityIntent.Supportive &&
-                                          IsTargetInRange(actor, actor, action));
-
-            if (supportive != null)
-            {
-                return new TurnChoice
-                {
-                    IsPass = false,
-                    ActionId = supportive.Id,
-                    TargetCombatantId = actor.CombatantId
-                };
-            }
-
-            return TurnChoice.Pass();
-        }
-
         private bool IsValidTargetForSelectedAction(CombatantState actor, CombatantState target, CuidAction action)
         {
-            if (actor == null || target == null || action == null || target.IsDefeated)
-            {
-                return false;
-            }
-
-            if (action.Kind == ActionKind.Attack)
-            {
-                return target.Team != actor.Team && IsTargetInRange(actor, target, action);
-            }
-
-            if (action.Kind == ActionKind.Ability)
-            {
-                switch (action.TargetRule)
-                {
-                    case TargetRule.Self:
-                        return target.CombatantId == actor.CombatantId && IsTargetInRange(actor, target, action);
-                    case TargetRule.AllySingle:
-                        return target.Team == actor.Team && IsTargetInRange(actor, target, action);
-                    case TargetRule.EnemySingle:
-                    case TargetRule.EnemyArea:
-                        return target.Team != actor.Team && IsTargetInRange(actor, target, action);
-                }
-            }
-
-            return false;
-        }
-
-        private bool IsTargetInRange(CombatantState actor, CombatantState target, CuidAction action)
-        {
-            if (actor == null || target == null || action == null)
-            {
-                return false;
-            }
-
-            return _spatialQueryService.IsTargetInRange(actor.Position, target.Position, action.Range);
+            return _actionQueryService.IsValidTarget(actor, target, action, _spatialQueryService);
         }
 
         private TeamRoster BuildTeam(TeamSide side, List<CuidDefinition> definitions)

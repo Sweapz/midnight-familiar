@@ -49,6 +49,7 @@ namespace MidnightFamiliar.Combat.Systems
         private readonly IDiceRoller _diceRoller;
         private readonly CombatResolver _combatResolver;
         private readonly TypeStatusProcessor _statusProcessor;
+        private readonly ICombatActionQueryService _actionQueryService;
         private string _turnStartProcessedCombatantId = string.Empty;
         private int _turnStartProcessedRound = -1;
 
@@ -56,11 +57,15 @@ namespace MidnightFamiliar.Combat.Systems
         public BattlePhase Phase { get; private set; } = BattlePhase.NotStarted;
         public TeamSide? WinningSide { get; private set; }
 
-        public TurnController(IDiceRoller diceRoller = null, ITypeEffectivenessProvider typeEffectivenessProvider = null)
+        public TurnController(
+            IDiceRoller diceRoller = null,
+            ITypeEffectivenessProvider typeEffectivenessProvider = null,
+            ICombatActionQueryService actionQueryService = null)
         {
             _diceRoller = diceRoller ?? new UnityDiceRoller();
             _combatResolver = new CombatResolver(_diceRoller, typeEffectivenessProvider);
             _statusProcessor = new TypeStatusProcessor(_diceRoller);
+            _actionQueryService = actionQueryService ?? new CombatActionQueryService();
         }
 
         public BattleState StartBattle(TeamRoster playerTeam, TeamRoster enemyTeam, int gridWidth = 8, int gridHeight = 8)
@@ -207,7 +212,7 @@ namespace MidnightFamiliar.Combat.Systems
 
                 TurnChoice choice = chooser != null
                     ? chooser(actor, BattleState)
-                    : BuildDefaultChoice(actor);
+                    : _actionQueryService.BuildDefaultChoice(actor, BattleState);
 
                 TurnStepResult step = ExecuteTurn(choice);
                 result.Steps.Add(step);
@@ -397,29 +402,6 @@ namespace MidnightFamiliar.Combat.Systems
             }
 
             return false;
-        }
-
-        private TurnChoice BuildDefaultChoice(CombatantState actor)
-        {
-            CuidAction action = actor.Unit.Actions.FirstOrDefault(a => a != null);
-            if (action == null)
-            {
-                return TurnChoice.Pass();
-            }
-
-            TeamSide opposingTeam = actor.Team == TeamSide.Player ? TeamSide.Enemy : TeamSide.Player;
-            CombatantState target = BattleState.Combatants.FirstOrDefault(c => c.Team == opposingTeam && !c.IsDefeated);
-            if (target == null)
-            {
-                return TurnChoice.Pass();
-            }
-
-            return new TurnChoice
-            {
-                IsPass = false,
-                ActionId = action.Id,
-                TargetCombatantId = target.CombatantId
-            };
         }
 
         private TurnStepResult BuildStepSuccess(string message, ActionResolution resolution)

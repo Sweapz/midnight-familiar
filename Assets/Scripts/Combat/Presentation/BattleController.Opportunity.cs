@@ -78,19 +78,8 @@ namespace MidnightFamiliar.Combat.Presentation
 
         private List<CuidAction> GetAvailableOpportunityActions(CombatantState attacker)
         {
-            if (attacker?.Unit?.Actions == null)
-            {
-                return new List<CuidAction>(0);
-            }
-
-            if (_spentOpportunityCombatants.Contains(attacker.CombatantId))
-            {
-                return new List<CuidAction>(0);
-            }
-
-            return attacker.Unit.Actions
-                .Where(action => action != null && action.IsBasicAttack && action.Kind == ActionKind.Attack)
-                .ToList();
+            bool spent = attacker != null && _spentOpportunityCombatants.Contains(attacker.CombatantId);
+            return _actionQueryService.GetAvailableOpportunityActions(attacker, spent);
         }
 
         private IEnumerator PromptPlayerOpportunityChoice(
@@ -234,12 +223,7 @@ namespace MidnightFamiliar.Combat.Presentation
 
         private bool HasAnyRangedAction(CombatantState actor)
         {
-            if (actor?.Unit?.Actions == null)
-            {
-                return false;
-            }
-
-            return actor.Unit.Actions.Any(action => action != null && action.Range > 1);
+            return _actionQueryService.HasAnyRangedAction(actor);
         }
 
         private bool IsAdjacentToAnyOpponent(CombatantState actor)

@@ -67,6 +67,7 @@ namespace MidnightFamiliar.Combat.Presentation
         private readonly CombatResolver _opportunityResolver = new CombatResolver();
         private readonly ICombatMovementService _movementService = new CombatMovementService();
         private readonly ICombatSpatialQueryService _spatialQueryService = new CombatSpatialQueryService();
+        private readonly ICombatActionQueryService _actionQueryService = new CombatActionQueryService();
         private readonly List<CuidAction> _pendingOpportunityActions = new List<CuidAction>(3);
         private readonly HashSet<string> _spentOpportunityCombatants = new HashSet<string>();
 
@@ -388,7 +389,7 @@ namespace MidnightFamiliar.Combat.Presentation
             int movementUsed = moveStart.ManhattanDistanceTo(actor.Position);
             int movementRemaining = Mathf.Max(0, movementBudget - movementUsed);
 
-            TurnChoice choice = BuildEnemyChoice(actor, target);
+            TurnChoice choice = _actionQueryService.BuildEnemyChoice(actor, target, _spatialQueryService);
             TurnStepResult step = _turnController.ExecuteTurn(choice);
             if (!step.Success && !choice.IsPass)
             {
